@@ -1,0 +1,37 @@
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  min-height: 100dvh;
+}
+
+body {
+  background: #F5EFE0;
+  color: #1F3A2E;
+  font-family: 'Inter', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior-y: contain;
+}
+
+/* iOS에서 input zoom 방지 */
+input, textarea, select {
+  font-size: 16px;
+}
+
+button {
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* PWA standalone 모드일 때 상단 safe area */
+@supports (padding: env(safe-area-inset-top)) {
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

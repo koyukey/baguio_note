@@ -1,0 +1,19 @@
+{
+  "name": "Baguio Study",
+  "short_name": "Baguio",
+  "description": "필리핀 바기오 어학연수 동반자",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F5EFE0",
+  "theme_color": "#1F3A2E",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

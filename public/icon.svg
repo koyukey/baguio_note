@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="115" fill="#1F3A2E"/>
+  <path d="M 80 380 L 200 200 L 280 290 L 360 180 L 432 380 Z" fill="#C45A3F" opacity="0.85"/>
+  <text x="256" y="200" font-family="Georgia, serif" font-size="180" font-weight="700" text-anchor="middle" fill="#F5EFE0" font-style="italic">B</text>
+</svg>
