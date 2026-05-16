@@ -197,7 +197,7 @@ export default function BaguioApp() {
 
   // 여행 정보
   const [tripStart, setTripStart] = useState('2026-05-16');
-  const [tripEnd, setTripEnd] = useState('2026-08-16');
+  const [tripEnd, setTripEnd] = useState('2026-06-13');
 
   // 환율
   const [phpRate, setPhpRate] = useState(24.17);
