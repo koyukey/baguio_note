@@ -519,15 +519,17 @@ export default function BaguioApp() {
         )}
         {tab === 'plan' && (
           <PlanTab
+            lang={lang}
             checklist={checklist} setChecklist={setChecklist}
             routines={routines} setRoutines={setRoutines}
           />
         )}
         {tab === 'schedule' && (
-          <ScheduleTab schedule={schedule} setSchedule={setSchedule} />
+          <ScheduleTab lang={lang} schedule={schedule} setSchedule={setSchedule} />
         )}
         {tab === 'money' && (
           <MoneyTab
+            lang={lang}
             phpRate={phpRate} setPhpRate={setPhpRate}
             rateUpdated={rateUpdated} setRateUpdated={setRateUpdated}
             expenses={expenses} setExpenses={setExpenses}
@@ -537,6 +539,7 @@ export default function BaguioApp() {
         )}
         {tab === 'english' && (
           <EnglishTab
+            lang={lang}
             vocab={vocab} setVocab={setVocab}
             articles={articles} setArticles={setArticles}
           />
@@ -557,11 +560,11 @@ export default function BaguioApp() {
         boxShadow: '0 10px 30px rgba(31,58,46,0.25)'
       }}>
         {[
-          { key: 'home', icon: Compass, label: '홈' },
-          { key: 'plan', icon: Check, label: '할 일' },
-          { key: 'schedule', icon: CalendarDays, label: '시간표' },
-          { key: 'money', icon: Wallet, label: '머니' },
-          { key: 'english', icon: Languages, label: '영어' },
+          { key: 'home', icon: Compass, label: lang === 'ko' ? '홈' : 'Home' },
+          { key: 'plan', icon: Check, label: lang === 'ko' ? '할 일' : 'Todo' },
+          { key: 'schedule', icon: CalendarDays, label: lang === 'ko' ? '시간표' : 'Schedule' },
+          { key: 'money', icon: Wallet, label: lang === 'ko' ? '머니' : 'Money' },
+          { key: 'english', icon: Languages, label: lang === 'ko' ? '영어' : 'English' },
         ].map(({ key, icon: Icon, label }) => (
           <button key={key} onClick={() => setTab(key)} style={{
             background: tab === key ? '#C45A3F' : 'transparent',
@@ -876,11 +879,16 @@ function DashboardTab({ lang = 'ko', status, dDay, totalDays, daysIn, weekNum, t
       </Card>
 
       {/* 오늘의 수업 — BIG */}
-      <SectionTitle kicker={`${dayKoMap[todayKey]}요일 · TODAY`}>오늘의 수업</SectionTitle>
+      <SectionTitle kicker={lang === 'ko' ? `${dayKoMap[todayKey]}요일 · TODAY` : `${todayKey.toUpperCase()} · TODAY`}>
+        {lang === 'ko' ? '오늘의 수업' : "Today's Classes"}
+      </SectionTitle>
       <Card>
         {todayClasses.length === 0 ? (
           <div style={{ padding: '8px 0', fontSize: 13, color: '#7A8E7E' }}>
-            오늘은 수업이 없어요. <button onClick={() => goTo('schedule')} style={inlineLink}>시간표 편집 →</button>
+            {lang === 'ko' ? '오늘은 수업이 없어요. ' : 'No classes today. '}
+            <button onClick={() => goTo('schedule')} style={inlineLink}>
+              {lang === 'ko' ? '시간표 편집 →' : 'Edit schedule →'}
+            </button>
           </div>
         ) : (
           <div>
@@ -923,41 +931,48 @@ function DashboardTab({ lang = 'ko', status, dDay, totalDays, daysIn, weekNum, t
       </Card>
 
       {/* 오늘 할 일 */}
-      <SectionTitle kicker="TODO · TODAY">오늘 할 일</SectionTitle>
+      <SectionTitle kicker="TODO · TODAY">{lang === 'ko' ? '오늘 할 일' : "Today's Tasks"}</SectionTitle>
       <Card style={{ padding: visibleTodos.length === 0 ? 18 : 6 }}>
         {visibleTodos.length === 0 ? (
           <div style={{ fontSize: 13, color: '#7A8E7E' }}>
-            할 일이 없어요. <button onClick={() => goTo('plan')} style={inlineLink}>추가하기 →</button>
+            {lang === 'ko' ? '할 일이 없어요. ' : 'No tasks. '}
+            <button onClick={() => goTo('plan')} style={inlineLink}>
+              {lang === 'ko' ? '추가하기 →' : 'Add →'}
+            </button>
           </div>
         ) : (
           <>
-            {visibleTodos.map((c, i) => (
-              <div key={c.id} style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: '10px 12px',
-                borderBottom: i < visibleTodos.length - 1 ? '1px dashed rgba(31,58,46,0.08)' : 'none'
-              }}>
-                <button onClick={() => toggleTodo(c.id)} style={{
-                  width: 20, height: 20, borderRadius: 5,
-                  border: '2px solid #1F3A2E',
-                  background: 'transparent',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer', flexShrink: 0
-                }} />
-                <span style={{ flex: 1, fontSize: 13 }}>{c.text}</span>
-                <span style={{
-                  fontSize: 9, padding: '2px 6px', borderRadius: 6,
-                  background: 'rgba(31,58,46,0.06)', color: '#5C6F62',
-                  letterSpacing: '0.05em', fontWeight: 600
-                }}>{c.group}</span>
-              </div>
-            ))}
+            {visibleTodos.map((c, i) => {
+              const groupEn = { '오늘': 'Today', '과제': 'Homework', '영어': 'English', '읽기': 'Reading', '단어': 'Vocab', '준비': 'Prep', '기타': 'Other' }[c.group] || c.group;
+              return (
+                <div key={c.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '10px 12px',
+                  borderBottom: i < visibleTodos.length - 1 ? '1px dashed rgba(31,58,46,0.08)' : 'none'
+                }}>
+                  <button onClick={() => toggleTodo(c.id)} style={{
+                    width: 20, height: 20, borderRadius: 5,
+                    border: '2px solid #1F3A2E',
+                    background: 'transparent',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', flexShrink: 0
+                  }} />
+                  <span style={{ flex: 1, fontSize: 13 }}>{c.text}</span>
+                  <span style={{
+                    fontSize: 9, padding: '2px 6px', borderRadius: 6,
+                    background: 'rgba(31,58,46,0.06)', color: '#5C6F62',
+                    letterSpacing: '0.05em', fontWeight: 600
+                  }}>{lang === 'ko' ? c.group : groupEn}</span>
+                </div>
+              );
+            })}
             {hiddenTodosCount > 0 && (
               <button onClick={() => goTo('plan')} style={{
                 ...btnLink, width: '100%', justifyContent: 'center',
                 padding: '10px 12px', marginTop: 0
               }}>
-                + {hiddenTodosCount}개 더 보기 <ChevronRight size={12} />
+                {lang === 'ko' ? `+ ${hiddenTodosCount}개 더 보기` : `+ ${hiddenTodosCount} more`}
+                <ChevronRight size={12} />
               </button>
             )}
           </>
@@ -967,7 +982,7 @@ function DashboardTab({ lang = 'ko', status, dDay, totalDays, daysIn, weekNum, t
       {/* 오늘의 표현 — 플래시카드 */}
       {todayExpression && (
         <>
-          <SectionTitle kicker="DAILY">오늘의 표현</SectionTitle>
+          <SectionTitle kicker="DAILY">{lang === 'ko' ? '오늘의 표현' : "Today's Phrase"}</SectionTitle>
           <Card
             style={{ cursor: 'pointer', padding: 22, minHeight: 130, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
             onClick={() => setExprSide(exprSide === 'en' ? 'ko' : 'en')}
@@ -1058,7 +1073,13 @@ function SortableTodoItem({ item, isLast, onToggle, onRemove }) {
   );
 }
 
-function PlanTab({ checklist, setChecklist, routines, setRoutines }) {
+function PlanTab({ lang = 'ko', checklist, setChecklist, routines, setRoutines }) {
+  // 그룹명 표시용 한↔영 매핑 (저장된 group 값은 한글 유지 — 데이터 호환)
+  const groupLabel = (g) => {
+    if (lang === 'ko') return g;
+    const map = { '오늘': 'Today', '과제': 'Homework', '영어': 'English', '읽기': 'Reading', '단어': 'Vocab', '준비': 'Prep', '기타': 'Other' };
+    return map[g] || g;
+  };
   const [newItem, setNewItem] = useState('');
   const [newGroup, setNewGroup] = useState('오늘');
   const [newRoutineName, setNewRoutineName] = useState('');
@@ -1202,12 +1223,12 @@ function PlanTab({ checklist, setChecklist, routines, setRoutines }) {
 
   return (
     <>
-      <SectionTitle kicker="TODO">할 일</SectionTitle>
+      <SectionTitle kicker="TODO">{lang === 'ko' ? '할 일' : 'Tasks'}</SectionTitle>
 
       {active.length === 0 ? (
         <Card>
           <div style={{ textAlign: 'center', padding: '24px 0', color: '#7A8E7E', fontSize: 13 }}>
-            할 일이 없어요. 아래에서 새로 추가해보세요.
+            {lang === 'ko' ? '할 일이 없어요. 아래에서 새로 추가해보세요.' : 'No tasks. Add one below.'}
           </div>
         </Card>
       ) : (
@@ -1219,7 +1240,7 @@ function PlanTab({ checklist, setChecklist, routines, setRoutines }) {
               <div key={g} style={{ marginBottom: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                   <span className="display-italic" style={{ fontSize: 16, fontWeight: 500, color: '#1F3A2E' }}>
-                    {g}
+                    {groupLabel(g)}
                   </span>
                   <div style={{ flex: 1, height: 1, background: 'rgba(31,58,46,0.12)' }} />
                   <span style={{ fontSize: 10, color: '#7A8E7E' }}>{items.length}</span>
@@ -1244,34 +1265,36 @@ function PlanTab({ checklist, setChecklist, routines, setRoutines }) {
       )}
 
       {/* 추가 폼 */}
-      <SectionTitle kicker="ADD">새 할 일</SectionTitle>
+      <SectionTitle kicker="ADD">{lang === 'ko' ? '새 할 일' : 'New Task'}</SectionTitle>
       <Card>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input
             value={newItem} onChange={(e) => setNewItem(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && add()}
-            placeholder="예: 챕터 3 읽기, 단어 20개 외우기"
+            placeholder={lang === 'ko' ? '예: 챕터 3 읽기, 단어 20개 외우기' : 'e.g., Read Chapter 3, Memorize 20 words'}
             style={{ ...inputStyle, flex: 1, minWidth: 140 }}
           />
           <select value={newGroup} onChange={(e) => setNewGroup(e.target.value)} style={{ ...inputStyle, width: 100 }}>
-            {allGroupOptions.map(g => <option key={g}>{g}</option>)}
+            {allGroupOptions.map(g => <option key={g} value={g}>{groupLabel(g)}</option>)}
           </select>
           <button onClick={add} style={primaryBtn}>
-            <Plus size={14} /> 추가
+            <Plus size={14} /> {lang === 'ko' ? '추가' : 'Add'}
           </button>
         </div>
       </Card>
 
       {/* ===== 루틴 ===== */}
-      <SectionTitle kicker="ROUTINE">매일 루틴</SectionTitle>
+      <SectionTitle kicker="ROUTINE">{lang === 'ko' ? '매일 루틴' : 'Daily Routines'}</SectionTitle>
       <div style={{ fontSize: 11, color: '#7A8E7E', marginTop: -4, marginBottom: 10 }}>
-        오늘 했으면 동그라미를 탭하세요. 캘린더에 <strong style={{ color: '#1F3A2E' }}>\</strong> 표식으로 기록돼요.
+        {lang === 'ko'
+          ? <>오늘 했으면 동그라미를 탭하세요. 캘린더에 <strong style={{ color: '#1F3A2E' }}>\</strong> 표식으로 기록돼요.</>
+          : <>Tap the circle when done. Marked on calendar as <strong style={{ color: '#1F3A2E' }}>\</strong>.</>}
       </div>
 
       {routines.length === 0 ? (
         <Card>
           <div style={{ textAlign: 'center', padding: '20px 0', color: '#7A8E7E', fontSize: 13 }}>
-            아직 루틴이 없어요. 아래에서 추가해보세요.
+            {lang === 'ko' ? '아직 루틴이 없어요. 아래에서 추가해보세요.' : 'No routines yet. Add one below.'}
           </div>
         </Card>
       ) : (
@@ -1321,20 +1344,20 @@ function PlanTab({ checklist, setChecklist, routines, setRoutines }) {
           <input
             value={newRoutineName} onChange={(e) => setNewRoutineName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && addRoutine()}
-            placeholder="새 루틴 (예: 영자 신문 10분 읽기)"
+            placeholder={lang === 'ko' ? '새 루틴 (예: 영자 신문 10분 읽기)' : 'New routine (e.g., Read English news 10 min)'}
             style={{ ...inputStyle, flex: 1 }}
           />
           <button onClick={addRoutine} style={primaryBtn}>
-            <Plus size={14} /> 루틴
+            <Plus size={14} /> {lang === 'ko' ? '루틴' : 'Routine'}
           </button>
         </div>
       </Card>
 
       {/* ===== 성취 캘린더 ===== */}
-      <AchievementCalendar checklist={checklist} routines={routines} />
+      <AchievementCalendar lang={lang} checklist={checklist} routines={routines} />
 
       {/* 완료 로그 */}
-      <SectionTitle kicker="LOG">완료 기록</SectionTitle>
+      <SectionTitle kicker="LOG">{lang === 'ko' ? '완료 기록' : 'Completed Log'}</SectionTitle>
       <Card>
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -1342,11 +1365,16 @@ function PlanTab({ checklist, setChecklist, routines, setRoutines }) {
           borderBottom: showLog && done.length > 0 ? '1px dashed rgba(31,58,46,0.15)' : 'none'
         }}>
           <div className="display" style={{ fontSize: 24, fontWeight: 700, lineHeight: 1 }}>
-            {done.length}<span style={{ color: '#7A8E7E', fontSize: 14, fontWeight: 500 }}> 건 완료</span>
+            {done.length}<span style={{ color: '#7A8E7E', fontSize: 14, fontWeight: 500 }}>
+              {lang === 'ko' ? ' 건 완료' : ' done'}
+            </span>
           </div>
           {done.length > 0 && (
             <button onClick={() => setShowLog(!showLog)} style={btnLink}>
-              {showLog ? '접기' : '펼치기'} <ChevronRight size={12} style={{ transform: showLog ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />
+              {showLog
+                ? (lang === 'ko' ? '접기' : 'Collapse')
+                : (lang === 'ko' ? '펼치기' : 'Expand')}
+              <ChevronRight size={12} style={{ transform: showLog ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />
             </button>
           )}
         </div>
@@ -1367,13 +1395,13 @@ function PlanTab({ checklist, setChecklist, routines, setRoutines }) {
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
                   }}>{c.text}</div>
                   <div style={{ fontSize: 9, color: '#A8B8AB', letterSpacing: '0.03em', marginTop: 1 }}>
-                    {c.group} · {formatRelativeTime(c.completedAt)}
+                    {groupLabel(c.group)} · {formatRelativeTime(c.completedAt)}
                   </div>
                 </div>
-                <button onClick={() => restore(c.id)} title="복구" style={iconBtn}>
+                <button onClick={() => restore(c.id)} title={lang === 'ko' ? '복구' : 'Restore'} style={iconBtn}>
                   <RotateCcw size={12} color="#7A8E7E" />
                 </button>
-                <button onClick={() => removeItem(c.id)} title="영구 삭제" style={iconBtn}>
+                <button onClick={() => removeItem(c.id)} title={lang === 'ko' ? '영구 삭제' : 'Delete permanently'} style={iconBtn}>
                   <Trash2 size={12} color="#C45A3F" />
                 </button>
               </div>
@@ -1381,7 +1409,7 @@ function PlanTab({ checklist, setChecklist, routines, setRoutines }) {
             <button onClick={clearLog} style={{
               ...btnLink, marginTop: 10, color: '#C45A3F', display: 'flex', alignItems: 'center'
             }}>
-              <Trash2 size={11} style={{ marginRight: 4 }} /> 로그 전체 삭제
+              <Trash2 size={11} style={{ marginRight: 4 }} /> {lang === 'ko' ? '로그 전체 삭제' : 'Clear all log'}
             </button>
           </div>
         )}
@@ -1560,13 +1588,13 @@ function AchievementCalendar({ checklist, routines }) {
 // ============================================================
 //  시간표 탭 — 한 주 그리드 뷰
 // ============================================================
-function ScheduleTab({ schedule, setSchedule }) {
+function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
   const [editing, setEditing] = useState(null); // index or null
   const [form, setForm] = useState({ day: 'mon', time: '09:00', subject: '', teacher: '', room: '' });
 
   const allDays = [
-    { key: 'mon', ko: '월' }, { key: 'tue', ko: '화' }, { key: 'wed', ko: '수' },
-    { key: 'thu', ko: '목' }, { key: 'fri', ko: '금' }, { key: 'sat', ko: '토' }, { key: 'sun', ko: '일' }
+    { key: 'mon', ko: '월', en: 'Mon' }, { key: 'tue', ko: '화', en: 'Tue' }, { key: 'wed', ko: '수', en: 'Wed' },
+    { key: 'thu', ko: '목', en: 'Thu' }, { key: 'fri', ko: '금', en: 'Fri' }, { key: 'sat', ko: '토', en: 'Sat' }, { key: 'sun', ko: '일', en: 'Sun' }
   ];
 
   // 표시할 요일: 월-금 + (실제 데이터가 있으면) 토/일
@@ -1638,9 +1666,11 @@ function ScheduleTab({ schedule, setSchedule }) {
 
   return (
     <>
-      <SectionTitle kicker="WEEKLY">시간표</SectionTitle>
+      <SectionTitle kicker="WEEKLY">{lang === 'ko' ? '시간표' : 'Schedule'}</SectionTitle>
       <div style={{ fontSize: 11, color: '#7A8E7E', marginTop: -4, marginBottom: 10 }}>
-        수업 칸을 탭하면 수정, 빈 칸을 탭하면 그 시간에 새 수업을 추가합니다.
+        {lang === 'ko'
+          ? '수업 칸을 탭하면 수정, 빈 칸을 탭하면 그 시간에 새 수업을 추가합니다.'
+          : 'Tap a class to edit, tap an empty slot to add a new class.'}
       </div>
 
       {/* ===== 한 주 그리드 ===== */}
@@ -1663,7 +1693,7 @@ function ScheduleTab({ schedule, setSchedule }) {
                 padding: '6px 0 4px',
                 borderBottom: isToday ? '2px solid #C45A3F' : '2px solid transparent'
               }}>
-                {d.ko}
+                {lang === 'ko' ? d.ko : d.en}
               </div>
             );
           })}
@@ -1846,7 +1876,8 @@ function ScheduleTab({ schedule, setSchedule }) {
 // ============================================================
 //  기기 간 동기화 섹션 — 매직 링크로 이메일 연결
 // ============================================================
-function SyncSection() {
+function SyncSection({ lang = 'ko' }) {
+  const t = (ko, en) => lang === 'ko' ? ko : en;
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [linkedEmail, setLinkedEmailState] = useState(null);
@@ -1882,21 +1913,22 @@ function SyncSection() {
       if (mode === 'attach') {
         setMsg({
           type: 'ok',
-          text: `${email}로 확인 메일을 보냈습니다. 메일의 링크를 한 번 눌러주세요.`,
+          text: t(`${email}로 확인 메일을 보냈습니다. 메일의 링크를 한 번 눌러주세요.`,
+                  `Confirmation email sent to ${email}. Open it and click the link once.`),
         });
         setEmail('');
       } else {
-        // login 모드: 메일이 코드를 담아 옴 → 코드 입력 단계로
         setSentEmail(email.trim());
         setStep('code');
         setMsg({
           type: 'ok',
-          text: `${email}로 6자리 코드를 보냈습니다. 메일을 확인 후 아래에 입력하세요.`,
+          text: t(`${email}로 6자리 코드를 보냈습니다. 메일을 확인 후 아래에 입력하세요.`,
+                  `6-digit code sent to ${email}. Check your email and enter it below.`),
         });
         setEmail('');
       }
     } else {
-      setMsg({ type: 'err', text: error || '요청 실패' });
+      setMsg({ type: 'err', text: error || t('요청 실패', 'Request failed') });
     }
   };
 
@@ -1906,26 +1938,26 @@ function SyncSection() {
     const { ok, error } = await verifyOtpCode(sentEmail, code);
     setBusy(false);
     if (ok) {
-      setMsg({ type: 'ok', text: '연결되었어요. 데이터를 가져오는 중...' });
+      setMsg({ type: 'ok', text: t('연결되었어요. 데이터를 가져오는 중...', 'Linked. Fetching data...') });
       setCode('');
-      // 잠깐 후 새로고침해서 데이터 확실히 반영
       setTimeout(() => { if (typeof window !== 'undefined') window.location.reload(); }, 1000);
     } else {
-      setMsg({ type: 'err', text: error || '코드가 올바르지 않습니다.' });
+      setMsg({ type: 'err', text: error || t('코드가 올바르지 않습니다.', 'Invalid code.') });
     }
   };
 
   return (
     <>
-      <SectionTitle kicker="SYNC">기기 간 동기화</SectionTitle>
+      <SectionTitle kicker="SYNC">{t('기기 간 동기화', 'Device Sync')}</SectionTitle>
       <Card>
         {linkedEmail ? (
           <>
             <div style={{ fontSize: 13, color: '#1F3A2E', marginBottom: 6 }}>
-              <strong>{linkedEmail}</strong> 에 연결됨
+              <strong>{linkedEmail}</strong> {t('에 연결됨', 'linked')}
             </div>
             <div style={{ fontSize: 11, color: '#7A8E7E', lineHeight: 1.5, marginBottom: 12 }}>
-              다른 기기에서 이 이메일로 인증 코드를 받으면 같은 데이터를 볼 수 있어요.
+              {t('다른 기기에서 이 이메일로 인증 코드를 받으면 같은 데이터를 볼 수 있어요.',
+                  'On other devices, request a code with this email to view the same data.')}
             </div>
             {step === 'email' ? (
               <div style={{ display: 'flex', gap: 8 }}>
@@ -1938,7 +1970,7 @@ function SyncSection() {
                   onClick={() => { setMode('login'); submitEmail(); }}
                   disabled={busy || !email}
                   style={primaryBtn}
-                >코드 보내기</button>
+                >{t('코드 보내기', 'Send Code')}</button>
               </div>
             ) : (
               <div>
@@ -1946,28 +1978,28 @@ function SyncSection() {
                   <input
                     type="text" inputMode="numeric" maxLength={6}
                     value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                    placeholder="6자리 코드"
+                    placeholder={t('6자리 코드', '6-digit code')}
                     style={{ ...inputStyle, flex: 1, fontSize: 18, letterSpacing: '0.4em', textAlign: 'center' }}
                   />
-                  <button onClick={submitCode} disabled={busy || code.length !== 6} style={primaryBtn}>인증</button>
+                  <button onClick={submitCode} disabled={busy || code.length !== 6} style={primaryBtn}>{t('인증', 'Verify')}</button>
                 </div>
                 <button
                   onClick={() => { setStep('email'); setCode(''); setMsg(null); }}
                   style={{ background: 'none', border: 'none', color: '#7A8E7E', fontSize: 11, marginTop: 8, cursor: 'pointer', padding: 0 }}
-                >← 이메일 다시 입력</button>
+                >← {t('이메일 다시 입력', 'Re-enter email')}</button>
               </div>
             )}
           </>
         ) : (
           <>
             <div style={{ fontSize: 11, color: '#7A8E7E', lineHeight: 1.5, marginBottom: 12 }}>
-              이메일을 연결하면 다른 기기 (폰·태블릿·다른 노트북) 에서도 같은 데이터를 볼 수 있어요.
-              지금 이 기기에 쌓아둔 데이터는 그대로 유지됩니다.
+              {t('이메일을 연결하면 다른 기기 (폰·태블릿·다른 노트북) 에서도 같은 데이터를 볼 수 있어요. 지금 이 기기에 쌓아둔 데이터는 그대로 유지됩니다.',
+                  'Link an email to see the same data on other devices (phone, tablet, another laptop). Your current data on this device stays.')}
             </div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
               {[
-                { id: 'attach', label: '이 기기에 이메일 연결' },
-                { id: 'login', label: '다른 기기 데이터 받기' },
+                { id: 'attach', label: t('이 기기에 이메일 연결', 'Link email here') },
+                { id: 'login', label: t('다른 기기 데이터 받기', 'Get data from other device') },
               ].map(opt => (
                 <button
                   key={opt.id}
@@ -1994,25 +2026,24 @@ function SyncSection() {
                   style={{ ...inputStyle, flex: 1 }}
                 />
                 <button onClick={submitEmail} disabled={busy || !email} style={primaryBtn}>
-                  {busy ? '전송 중...' : (mode === 'attach' ? '메일 보내기' : '코드 보내기')}
+                  {busy ? t('전송 중...', 'Sending...') : (mode === 'attach' ? t('메일 보내기', 'Send Email') : t('코드 보내기', 'Send Code'))}
                 </button>
               </div>
             ) : (
-              // login 모드 + 코드 입력 단계
               <div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input
                     type="text" inputMode="numeric" maxLength={6}
                     value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                    placeholder="6자리 코드"
+                    placeholder={t('6자리 코드', '6-digit code')}
                     style={{ ...inputStyle, flex: 1, fontSize: 18, letterSpacing: '0.4em', textAlign: 'center' }}
                   />
-                  <button onClick={submitCode} disabled={busy || code.length !== 6} style={primaryBtn}>인증</button>
+                  <button onClick={submitCode} disabled={busy || code.length !== 6} style={primaryBtn}>{t('인증', 'Verify')}</button>
                 </div>
                 <button
                   onClick={() => { setStep('email'); setCode(''); setMsg(null); }}
                   style={{ background: 'none', border: 'none', color: '#7A8E7E', fontSize: 11, marginTop: 8, cursor: 'pointer', padding: 0 }}
-                >← 이메일 다시 입력</button>
+                >← {t('이메일 다시 입력', 'Re-enter email')}</button>
               </div>
             )}
           </>
@@ -2032,7 +2063,7 @@ function SyncSection() {
   );
 }
 
-function MoneyTab({ phpRate, setPhpRate, rateUpdated, setRateUpdated, expenses, setExpenses, tripStart, setTripStart, tripEnd, setTripEnd }) {
+function MoneyTab({ lang = 'ko', phpRate, setPhpRate, rateUpdated, setRateUpdated, expenses, setExpenses, tripStart, setTripStart, tripEnd, setTripEnd }) {
   const [amount, setAmount] = useState('100');
   const [direction, setDirection] = useState('php_to_krw'); // or krw_to_php
   const [newExp, setNewExp] = useState({ desc: '', amount: '', currency: 'PHP', category: '식비' });
@@ -2066,7 +2097,7 @@ function MoneyTab({ phpRate, setPhpRate, rateUpdated, setRateUpdated, expenses, 
   return (
     <>
       {/* 환율 카드 */}
-      <SectionTitle kicker="RATE">환율</SectionTitle>
+      <SectionTitle kicker="RATE">{lang === 'ko' ? '환율' : 'Exchange Rate'}</SectionTitle>
       <Card accent>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
@@ -2103,7 +2134,7 @@ function MoneyTab({ phpRate, setPhpRate, rateUpdated, setRateUpdated, expenses, 
       </Card>
 
       {/* 변환 계산기 */}
-      <SectionTitle kicker="CONVERTER">환전 계산</SectionTitle>
+      <SectionTitle kicker="CONVERTER">{lang === 'ko' ? '환전 계산' : 'Converter'}</SectionTitle>
       <Card>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
           <input
@@ -2215,7 +2246,7 @@ function MoneyTab({ phpRate, setPhpRate, rateUpdated, setRateUpdated, expenses, 
       )}
 
       {/* 학기 기간 */}
-      <SectionTitle kicker="PROGRAM">학기 기간</SectionTitle>
+      <SectionTitle kicker="PROGRAM">{lang === 'ko' ? '학기 기간' : 'Program Period'}</SectionTitle>
       <Card style={{ padding: 14 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div>
@@ -2229,7 +2260,7 @@ function MoneyTab({ phpRate, setPhpRate, rateUpdated, setRateUpdated, expenses, 
         </div>
       </Card>
 
-      <SyncSection />
+      <SyncSection lang={lang} />
     </>
   );
 }
