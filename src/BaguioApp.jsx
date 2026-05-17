@@ -18,6 +18,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { initSync, syncStorage, subscribeRemoteChanges, refreshNow } from './lib/syncStorage';
 import PullToRefresh from 'pulltorefreshjs';
 import { getLinkedEmail, attachEmailToCurrentSession, sendOtpCode, verifyOtpCode, isAnonymous, getRememberedEmail } from './lib/supabase';
+import { parseDiaryMarkdown, diaryToPhrases } from './lib/parseDiary';
 
 // ============================================================
 //  스토리지 — localStorage + Supabase 동기화 (lib/syncStorage)
@@ -281,13 +282,14 @@ export default function BaguioApp() {
   const [phpRate, setPhpRate] = useState(24.17);
   const [rateUpdated, setRateUpdated] = useState('2026-05-15');
 
-  // 체크리스트, 시간표, 가계부, 단어장, 루틴, 글쓰기
+  // 체크리스트, 시간표, 가계부, 단어장, 루틴, 글쓰기, 일기
   const [checklist, setChecklist] = useState(STARTER_CHECKLIST);
   const [schedule, setSchedule] = useState(STARTER_SCHEDULE);
   const [expenses, setExpenses] = useState([]);
   const [vocab, setVocab] = useState(STARTER_PHRASES);
   const [routines, setRoutines] = useState(STARTER_ROUTINES);
   const [articles, setArticles] = useState([]);
+  const [diaries, setDiaries] = useState([]);
 
   // 첫 로드 시 Supabase 동기화 → 저장된 데이터 불러오기
   useEffect(() => {
@@ -348,6 +350,8 @@ export default function BaguioApp() {
       if (ro) { try { setRoutines(JSON.parse(ro)); } catch {} }
       const ar = await storage.get('baguio:articles');
       if (ar) { try { setArticles(JSON.parse(ar)); } catch {} }
+      const dr = await storage.get('baguio:diaries');
+      if (dr) { try { setDiaries(JSON.parse(dr)); } catch {} }
       setLoaded(true);
     })();
   }, []);
@@ -362,6 +366,7 @@ export default function BaguioApp() {
   useEffect(() => { if (loaded) storage.set('baguio:vocab', JSON.stringify(vocab)); }, [vocab, loaded]);
   useEffect(() => { if (loaded) storage.set('baguio:routines', JSON.stringify(routines)); }, [routines, loaded]);
   useEffect(() => { if (loaded) storage.set('baguio:articles', JSON.stringify(articles)); }, [articles, loaded]);
+  useEffect(() => { if (loaded) storage.set('baguio:diaries', JSON.stringify(diaries)); }, [diaries, loaded]);
 
   // Pull-to-Refresh — 화면 위에서 아래로 당겨서 새로고침
   // (PWA에서 브라우저 기본 P2R가 비활성화되므로 직접 구현)
@@ -424,6 +429,7 @@ export default function BaguioApp() {
           case 'baguio:vocab': setVocab(JSON.parse(serialized)); break;
           case 'baguio:routines': setRoutines(JSON.parse(serialized)); break;
           case 'baguio:articles': setArticles(JSON.parse(serialized)); break;
+          case 'baguio:diaries': setDiaries(JSON.parse(serialized)); break;
         }
       } catch (e) {
         console.warn('[realtime] apply failed', key, e);
@@ -602,6 +608,7 @@ export default function BaguioApp() {
             lang={lang}
             vocab={vocab} setVocab={setVocab}
             articles={articles} setArticles={setArticles}
+            diaries={diaries} setDiaries={setDiaries}
           />
         )}
       </main>
@@ -2342,8 +2349,293 @@ function MoneyTab({ lang = 'ko', phpRate, setPhpRate, rateUpdated, setRateUpdate
 // ============================================================
 //  영어 학습 탭 — 표현 + 글쓰기
 // ============================================================
-function EnglishTab({ vocab, setVocab, articles, setArticles }) {
-  const [section, setSection] = useState('phrases'); // phrases | writing
+// ============================================================
+//  Diary 섹션 — 한·영 일기 목록 + 마크다운 붙여넣기 + 상세 보기
+// ============================================================
+function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary }) {
+  const t = (ko, en) => lang === 'ko' ? ko : en;
+  const [view, setView] = useState('list'); // list | add | detail
+  const [openId, setOpenId] = useState(null);
+  // 추가 모달 상태
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [raw, setRaw] = useState('');
+  const [parsed, setParsed] = useState(null);
+
+  const sorted = [...diaries].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  const goAdd = () => {
+    setDate(new Date().toISOString().slice(0, 10));
+    setRaw('');
+    setParsed(null);
+    setView('add');
+  };
+  const goPreview = () => {
+    if (!raw.trim()) return;
+    const p = parseDiaryMarkdown(raw);
+    setParsed(p);
+  };
+  const goSave = () => {
+    if (!parsed) return;
+    const diary = {
+      id: `diary-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      date,
+      title: parsed.title || t('제목 없음', 'Untitled'),
+      paragraphs: parsed.paragraphs,
+      vocabulary: parsed.vocabulary,
+      phrasal_verbs: parsed.phrasal_verbs,
+      expressions: parsed.expressions,
+      raw,
+      createdAt: new Date().toISOString(),
+    };
+    const phrases = diaryToPhrases(diary);
+    saveDiary(diary, phrases);
+    setView('list');
+    setRaw('');
+    setParsed(null);
+  };
+
+  // 상세 보기
+  if (view === 'detail' && openId) {
+    const d = diaries.find(x => x.id === openId);
+    if (!d) { setView('list'); setOpenId(null); return null; }
+    return (
+      <>
+        <button onClick={() => { setView('list'); setOpenId(null); }} style={{
+          background: 'none', border: 'none', color: '#7A8E7E', fontSize: 12,
+          marginBottom: 8, cursor: 'pointer', padding: 0,
+        }}>← {t('목록으로', 'Back to list')}</button>
+        <SectionTitle kicker={d.date}>{d.title}</SectionTitle>
+
+        {/* 본문 페어들 */}
+        <Card style={{ padding: 18 }}>
+          {d.paragraphs.map((p, i) => (
+            <div key={i} style={{ marginBottom: i < d.paragraphs.length - 1 ? 22 : 0 }}>
+              {p.ko && (
+                <div style={{ fontSize: 12, color: '#7A8E7E', lineHeight: 1.6, marginBottom: 6 }}>
+                  {p.ko}
+                </div>
+              )}
+              {p.en && (
+                <div style={{ fontSize: 15, color: '#1F3A2E', lineHeight: 1.6, fontWeight: 500 }}>
+                  {p.en}
+                </div>
+              )}
+            </div>
+          ))}
+        </Card>
+
+        {/* Vocabulary */}
+        {d.vocabulary && d.vocabulary.length > 0 && (
+          <>
+            <SectionTitle kicker={`VOCABULARY (${d.vocabulary.length})`}>{t('단어', 'Vocabulary')}</SectionTitle>
+            <Card style={{ padding: 4 }}>
+              {d.vocabulary.map((v, i) => (
+                <div key={i} style={{
+                  padding: '10px 12px',
+                  borderBottom: i < d.vocabulary.length - 1 ? '1px dashed rgba(31,58,46,0.1)' : 'none',
+                }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{v.word}</div>
+                  <div style={{ fontSize: 12, color: '#C45A3F', marginTop: 2 }}>{v.meaning}</div>
+                  {v.example && (
+                    <div style={{ fontSize: 11, color: '#7A8E7E', marginTop: 4, fontStyle: 'italic' }}>
+                      "{v.example}"
+                    </div>
+                  )}
+                </div>
+              ))}
+            </Card>
+          </>
+        )}
+
+        {/* Phrasal Verbs */}
+        {d.phrasal_verbs && d.phrasal_verbs.length > 0 && (
+          <>
+            <SectionTitle kicker={`PHRASAL VERBS (${d.phrasal_verbs.length})`}>{t('구동사', 'Phrasal Verbs')}</SectionTitle>
+            <Card style={{ padding: 4 }}>
+              {d.phrasal_verbs.map((p, i) => (
+                <div key={i} style={{
+                  padding: '10px 12px',
+                  borderBottom: i < d.phrasal_verbs.length - 1 ? '1px dashed rgba(31,58,46,0.1)' : 'none',
+                }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#C45A3F' }}>{p.verb}</div>
+                  <div style={{ fontSize: 12, color: '#1F3A2E', marginTop: 2 }}>{p.meaning}</div>
+                  {p.example && (
+                    <div style={{ fontSize: 11, color: '#7A8E7E', marginTop: 4, fontStyle: 'italic' }}>
+                      "{p.example}"
+                    </div>
+                  )}
+                </div>
+              ))}
+            </Card>
+          </>
+        )}
+
+        {/* Expressions */}
+        {d.expressions && d.expressions.length > 0 && (
+          <>
+            <SectionTitle kicker={`EXPRESSIONS (${d.expressions.length})`}>{t('표현', 'Useful Expressions')}</SectionTitle>
+            <Card style={{ padding: 4 }}>
+              {d.expressions.map((e, i) => (
+                <div key={i} style={{
+                  padding: '10px 12px',
+                  borderBottom: i < d.expressions.length - 1 ? '1px dashed rgba(31,58,46,0.1)' : 'none',
+                }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{e.expression}</div>
+                  <div style={{ fontSize: 12, color: '#C45A3F', marginTop: 2 }}>{e.meaning}</div>
+                  {e.note && (
+                    <div style={{ fontSize: 11, color: '#7A8E7E', marginTop: 4 }}>
+                      {t('노트', 'Note')}: {e.note}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </Card>
+          </>
+        )}
+
+        <Card style={{ marginTop: 12 }}>
+          <button
+            onClick={() => { deleteDiary(d.id); setView('list'); setOpenId(null); }}
+            style={{ ...secondaryBtn, color: '#C45A3F', borderColor: 'rgba(196,90,63,0.3)', width: '100%', justifyContent: 'center' }}
+          >
+            <Trash2 size={14} /> {t('일기 삭제', 'Delete diary')}
+          </button>
+        </Card>
+      </>
+    );
+  }
+
+  // 추가 모달
+  if (view === 'add') {
+    return (
+      <>
+        <button onClick={() => setView('list')} style={{
+          background: 'none', border: 'none', color: '#7A8E7E', fontSize: 12,
+          marginBottom: 8, cursor: 'pointer', padding: 0,
+        }}>← {t('취소', 'Cancel')}</button>
+        <SectionTitle kicker="NEW">{t('새 일기 붙여넣기', 'New Diary (paste)')}</SectionTitle>
+
+        <Card>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <div>
+              <div style={labelStyle}>{t('날짜', 'Date')}</div>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <div style={labelStyle}>{t('마크다운 붙여넣기', 'Paste markdown')}</div>
+              <textarea
+                value={raw}
+                onChange={(e) => { setRaw(e.target.value); setParsed(null); }}
+                placeholder={`# ${t('제목', 'Title')}\n\n${t('한국어 문단', 'Korean paragraph')}\n\n${t('영어 문단', 'English paragraph')}\n\n...\n\n## Vocabulary\n| Word | Meaning | Example |\n| --- | --- | --- |\n| ... | ... | ... |`}
+                style={{
+                  ...inputStyle,
+                  minHeight: 220, fontFamily: 'ui-monospace, monospace',
+                  fontSize: 12, lineHeight: 1.5, resize: 'vertical',
+                }}
+              />
+            </div>
+            <button onClick={goPreview} disabled={!raw.trim()} style={{ ...primaryBtn, justifyContent: 'center' }}>
+              {t('미리보기', 'Preview')} →
+            </button>
+          </div>
+        </Card>
+
+        {parsed && (
+          <>
+            <SectionTitle kicker="PREVIEW">{t('파싱 결과', 'Preview')}</SectionTitle>
+            <Card>
+              <div style={{ fontSize: 13, marginBottom: 8 }}>
+                <strong>{t('제목', 'Title')}:</strong> {parsed.title || <span style={{ color: '#C45A3F' }}>{t('(없음)', '(missing)')}</span>}
+              </div>
+              <div style={{ fontSize: 12, color: '#5C6F62', lineHeight: 1.8 }}>
+                {t('본문 페어', 'Paragraph pairs')}: <strong>{parsed.paragraphs.length}</strong><br />
+                {t('단어', 'Vocabulary')}: <strong>{parsed.vocabulary.length}</strong><br />
+                {t('구동사', 'Phrasal Verbs')}: <strong>{parsed.phrasal_verbs.length}</strong><br />
+                {t('표현', 'Expressions')}: <strong>{parsed.expressions.length}</strong>
+              </div>
+              {parsed.warnings.length > 0 && (
+                <div style={{
+                  marginTop: 12, padding: '8px 12px', borderRadius: 8,
+                  background: 'rgba(196,90,63,0.08)', color: '#C45A3F',
+                  fontSize: 11, lineHeight: 1.6,
+                }}>
+                  ⚠️ {t('주의', 'Warnings')}:
+                  <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
+                    {parsed.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                  </ul>
+                </div>
+              )}
+              <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
+                <button onClick={goSave} style={{ ...primaryBtn, flex: 1, justifyContent: 'center' }}>
+                  <Save size={14} /> {t('저장', 'Save')}
+                </button>
+                <button onClick={() => setParsed(null)} style={secondaryBtn}>{t('다시 파싱', 'Re-parse')}</button>
+              </div>
+              <div style={{ marginTop: 8, fontSize: 11, color: '#7A8E7E', lineHeight: 1.5 }}>
+                {t('저장하면 단어 · 구동사 · 표현이 자동으로 단어장(Phrases)에 추가돼요.',
+                    'On save, vocabulary, phrasal verbs, and expressions are auto-added to your Wordbook (Phrases).')}
+              </div>
+            </Card>
+          </>
+        )}
+      </>
+    );
+  }
+
+  // 목록
+  return (
+    <>
+      <SectionTitle kicker="DIARY">{t('일기', 'Diary')}</SectionTitle>
+
+      <Card style={{ marginBottom: 12 }}>
+        <button onClick={goAdd} style={{ ...primaryBtn, width: '100%', justifyContent: 'center', padding: '14px' }}>
+          <Plus size={16} /> {t('새 일기 추가', 'New Diary')}
+        </button>
+      </Card>
+
+      {sorted.length === 0 ? (
+        <Card>
+          <div style={{ textAlign: 'center', padding: '32px 0', color: '#7A8E7E', fontSize: 13, lineHeight: 1.6 }}>
+            {t('아직 일기가 없어요.', 'No diaries yet.')}<br />
+            {t('한·영 병기 마크다운을 붙여넣으면', 'Paste a Korean/English markdown')}<br />
+            {t('단어와 표현이 자동으로 정리됩니다.', 'and vocabulary will be organized automatically.')}
+          </div>
+        </Card>
+      ) : (
+        <Card style={{ padding: 4 }}>
+          {sorted.map((d, i) => (
+            <button
+              key={d.id}
+              onClick={() => { setOpenId(d.id); setView('detail'); }}
+              style={{
+                width: '100%', textAlign: 'left',
+                padding: '14px 16px',
+                background: 'transparent', border: 'none',
+                borderBottom: i < sorted.length - 1 ? '1px dashed rgba(31,58,46,0.1)' : 'none',
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                <div className="display" style={{ fontSize: 15, fontWeight: 600, color: '#1F3A2E', lineHeight: 1.3 }}>
+                  {d.title}
+                </div>
+                <div style={{ fontSize: 11, color: '#7A8E7E', flexShrink: 0 }}>{d.date}</div>
+              </div>
+              <div style={{ fontSize: 10, color: '#7A8E7E', marginTop: 6, letterSpacing: '0.03em' }}>
+                {t('단어', 'Vocab')} {d.vocabulary?.length || 0} · {t('구동사', 'PV')} {d.phrasal_verbs?.length || 0} · {t('표현', 'Expr')} {d.expressions?.length || 0}
+              </div>
+            </button>
+          ))}
+        </Card>
+      )}
+    </>
+  );
+}
+
+function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diaries = [], setDiaries = () => {} }) {
+  const t = (ko, en) => lang === 'ko' ? ko : en;
+  const [section, setSection] = useState('phrases'); // phrases | writing | diary
+  const [showLearned, setShowLearned] = useState(false); // Phrases: 외운 것 보기 토글
 
   // 표현 (phrases) 상태
   const [cat, setCat] = useState('전체');
@@ -2358,7 +2650,19 @@ function EnglishTab({ vocab, setVocab, articles, setArticles }) {
   const [draftContent, setDraftContent] = useState('');
 
   const cats = ['전체', ...new Set(vocab.map(v => v.cat))];
-  const filtered = cat === '전체' ? vocab : vocab.filter(v => v.cat === cat);
+  // 카테고리 + 외운 것 토글 필터
+  const filtered = vocab.filter(v => {
+    if (cat !== '전체' && v.cat !== cat) return false;
+    // 외운 것 보기 OFF면 안 외운 것만, ON이면 다 보임
+    if (!showLearned && v.learned === true) return false;
+    return true;
+  });
+  // 카테고리 라벨 (영문 모드일 때 자주 쓰는 한글 카테고리만 매핑)
+  const catLabel = (c) => {
+    if (lang === 'ko' || c === '전체') return c === '전체' ? t('전체', 'All') : c;
+    const map = { '단어': 'Words', '구동사': 'Phrasal Verbs', '표현': 'Expressions', '교실': 'Class', '식당': 'Food', '교통': 'Transit', '쇼핑': 'Shopping', '일상': 'Daily', '필리핀어': 'Filipino' };
+    return map[c] || c;
+  };
 
   const next = () => { setFlashSide('en'); setFlashIdx((flashIdx + 1) % filtered.length); };
   const prev = () => { setFlashSide('en'); setFlashIdx((flashIdx - 1 + filtered.length) % filtered.length); };
@@ -2369,6 +2673,28 @@ function EnglishTab({ vocab, setVocab, articles, setArticles }) {
     setNewCard({ cat: newCard.cat, en: '', ko: '' });
   };
   const removeCard = (en) => setVocab(vocab.filter(v => v.en !== en));
+  // 외움 토글
+  const toggleLearned = (en) => {
+    setVocab(vocab.map(v =>
+      v.en === en
+        ? { ...v, learned: !v.learned, learnedAt: !v.learned ? new Date().toISOString() : null }
+        : v
+    ));
+  };
+
+  // Diary 저장 (DiarySection이 부른다)
+  const saveDiary = (diary, phrasesToAdd) => {
+    setDiaries([diary, ...diaries]);
+    // 중복(en이 이미 있는 것) 제외하고 Phrases에 통합
+    const existingEnSet = new Set(vocab.map(v => v.en));
+    const fresh = phrasesToAdd.filter(p => !existingEnSet.has(p.en));
+    if (fresh.length > 0) setVocab([...fresh, ...vocab]);
+  };
+  const deleteDiary = (id) => {
+    if (typeof window !== 'undefined' && window.confirm(t('이 일기를 삭제할까요? 단어장에 추가된 단어는 그대로 남습니다.', 'Delete this diary? Words added to your wordbook will stay.'))) {
+      setDiaries(diaries.filter(d => d.id !== id));
+    }
+  };
 
   // 글쓰기 핸들러
   const startNewArticle = () => {
@@ -2412,24 +2738,25 @@ function EnglishTab({ vocab, setVocab, articles, setArticles }) {
 
   return (
     <>
-      <SectionTitle kicker="STUDY">영어</SectionTitle>
+      <SectionTitle kicker="STUDY">{t('영어', 'English')}</SectionTitle>
 
-      {/* 섹션 토글: 표현 ↔ 글쓰기 */}
+      {/* 섹션 토글: 표현 / 글쓰기 / 일기 */}
       <Card style={{ padding: 4, marginBottom: 12 }}>
         <div style={{ display: 'flex', gap: 4 }}>
           {[
-            { k: 'phrases', l: '표현', i: Languages },
-            { k: 'writing', l: '글쓰기', i: Pencil }
+            { k: 'phrases', l: t('표현', 'Phrases'), i: Languages },
+            { k: 'writing', l: t('글쓰기', 'Writing'), i: Pencil },
+            { k: 'diary', l: t('일기', 'Diary'), i: FileText },
           ].map(s => (
             <button key={s.k} onClick={() => { setSection(s.k); setEditingId(null); }} style={{
-              flex: 1, padding: '11px 10px',
+              flex: 1, padding: '11px 8px',
               background: section === s.k ? '#1F3A2E' : 'transparent',
               color: section === s.k ? '#F5EFE0' : '#1F3A2E',
               border: 'none', borderRadius: 10, cursor: 'pointer',
-              fontSize: 12, fontWeight: 600,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
+              fontSize: 11, fontWeight: 600,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5
             }}>
-              <s.i size={14} /> {s.l}
+              <s.i size={13} /> {s.l}
             </button>
           ))}
         </div>
@@ -2438,10 +2765,10 @@ function EnglishTab({ vocab, setVocab, articles, setArticles }) {
       {/* ===== 표현 섹션 ===== */}
       {section === 'phrases' && (
         <>
-          {/* 모드 토글 */}
+          {/* 모드 토글 + 외운 것 보기 */}
           <Card style={{ padding: 4, marginBottom: 12 }}>
-            <div style={{ display: 'flex', gap: 4 }}>
-              {[{k:'list', l:'목록'}, {k:'flash', l:'플래시카드'}].map(m => (
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              {[{k:'list', l: t('목록', 'List')}, {k:'flash', l: t('플래시카드', 'Flashcard')}].map(m => (
                 <button key={m.k} onClick={() => setMode(m.k)} style={{
                   flex: 1, padding: '10px',
                   background: mode === m.k ? '#5C6F62' : 'transparent',
@@ -2450,6 +2777,21 @@ function EnglishTab({ vocab, setVocab, articles, setArticles }) {
                   fontSize: 11, fontWeight: 600
                 }}>{m.l}</button>
               ))}
+              <button
+                onClick={() => setShowLearned(!showLearned)}
+                title={showLearned ? t('외운 것 보임 ON', 'Showing learned') : t('외운 것 숨김', 'Learned hidden')}
+                style={{
+                  padding: '8px 12px',
+                  background: showLearned ? '#C45A3F' : 'transparent',
+                  color: showLearned ? '#F5EFE0' : '#7A8E7E',
+                  border: '1px solid ' + (showLearned ? '#C45A3F' : 'rgba(31,58,46,0.15)'),
+                  borderRadius: 10, cursor: 'pointer',
+                  fontSize: 11, fontWeight: 600,
+                  display: 'flex', alignItems: 'center', gap: 4,
+                }}
+              >
+                {showLearned ? '★' : '☆'} {t('외움', 'Learned')}
+              </button>
             </div>
           </Card>
 
@@ -2462,7 +2804,7 @@ function EnglishTab({ vocab, setVocab, articles, setArticles }) {
                 border: '1px solid rgba(31,58,46,0.1)',
                 borderRadius: 100, padding: '6px 14px', fontSize: 12, fontWeight: 600,
                 cursor: 'pointer', whiteSpace: 'nowrap'
-              }}>{c}</button>
+              }}>{catLabel(c)}</button>
             ))}
           </div>
 
@@ -2496,39 +2838,72 @@ function EnglishTab({ vocab, setVocab, articles, setArticles }) {
 
           {/* 리스트 모드 */}
           {mode === 'list' && (
-            <Card style={{ padding: 4 }}>
-              {filtered.map((v, i) => (
-                <div key={i} style={{
-                  padding: '12px 14px',
-                  borderBottom: i < filtered.length - 1 ? '1px dashed rgba(31,58,46,0.1)' : 'none',
-                  display: 'flex', gap: 10, alignItems: 'flex-start'
-                }}>
-                  <div style={{
-                    fontSize: 8, padding: '3px 6px', borderRadius: 8,
-                    background: '#1F3A2E', color: '#F5EFE0', letterSpacing: '0.05em', fontWeight: 600,
-                    flexShrink: 0, marginTop: 2
-                  }}>{v.cat}</div>
-                  <div style={{ flex: 1 }}>
-                    <div className="display" style={{ fontSize: 14, fontWeight: 500, lineHeight: 1.4 }}>{v.en}</div>
-                    <div className="display-italic" style={{ fontSize: 12, color: '#C45A3F', marginTop: 2 }}>{v.ko}</div>
-                  </div>
-                  <button onClick={() => removeCard(v.en)} style={iconBtn}><X size={12} color="#7A8E7E" /></button>
+            filtered.length === 0 ? (
+              <Card>
+                <div style={{ textAlign: 'center', padding: '24px 0', color: '#7A8E7E', fontSize: 13 }}>
+                  {showLearned
+                    ? t('항목이 없어요.', 'No items.')
+                    : t('안 외운 단어가 없어요. 우상단 ★ 외움 토글로 외운 단어도 보기.', 'No unlearned items. Tap ★ Learned to show learned.')}
                 </div>
-              ))}
-            </Card>
+              </Card>
+            ) : (
+              <Card style={{ padding: 4 }}>
+                {filtered.map((v, i) => {
+                  const learned = v.learned === true;
+                  return (
+                    <div key={`${v.en}-${i}`} style={{
+                      padding: '12px 14px',
+                      borderBottom: i < filtered.length - 1 ? '1px dashed rgba(31,58,46,0.1)' : 'none',
+                      display: 'flex', gap: 10, alignItems: 'flex-start',
+                      opacity: learned ? 0.55 : 1,
+                    }}>
+                      <div style={{
+                        fontSize: 8, padding: '3px 6px', borderRadius: 8,
+                        background: v.cat === '구동사' ? '#C45A3F' : '#1F3A2E',
+                        color: '#F5EFE0', letterSpacing: '0.05em', fontWeight: 600,
+                        flexShrink: 0, marginTop: 2
+                      }}>{catLabel(v.cat)}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="display" style={{
+                          fontSize: 14, fontWeight: 500, lineHeight: 1.4,
+                          textDecoration: learned ? 'line-through' : 'none',
+                        }}>{v.en}</div>
+                        <div className="display-italic" style={{ fontSize: 12, color: '#C45A3F', marginTop: 2 }}>{v.ko}</div>
+                        {v.example && (
+                          <div style={{ fontSize: 11, color: '#7A8E7E', marginTop: 4, fontStyle: 'italic' }}>
+                            "{v.example}"
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => toggleLearned(v.en)}
+                        title={learned ? t('외움 해제', 'Mark unlearned') : t('외움', 'Mark learned')}
+                        style={{
+                          background: 'transparent', border: 'none', padding: 4,
+                          cursor: 'pointer', flexShrink: 0,
+                          fontSize: 18, color: learned ? '#C45A3F' : '#A8B8AB',
+                          lineHeight: 1,
+                        }}
+                      >{learned ? '★' : '☆'}</button>
+                      <button onClick={() => removeCard(v.en)} style={iconBtn}><X size={12} color="#7A8E7E" /></button>
+                    </div>
+                  );
+                })}
+              </Card>
+            )
           )}
 
           {/* 카드 추가 */}
-          <SectionTitle kicker="ADD">카드 추가</SectionTitle>
+          <SectionTitle kicker="ADD">{t('카드 추가', 'New Card')}</SectionTitle>
           <Card>
             <div style={{ display: 'grid', gap: 8 }}>
               <select value={newCard.cat} onChange={(e) => setNewCard({...newCard, cat: e.target.value})} style={inputStyle}>
-                {['교실','식당','교통','쇼핑','일상','필리핀어','기타'].map(c => <option key={c}>{c}</option>)}
+                {['단어','구동사','표현','교실','식당','교통','쇼핑','일상','필리핀어','기타'].map(c => <option key={c} value={c}>{catLabel(c)}</option>)}
               </select>
-              <input value={newCard.en} onChange={(e) => setNewCard({...newCard, en: e.target.value})} placeholder="영어 표현" style={inputStyle} />
-              <input value={newCard.ko} onChange={(e) => setNewCard({...newCard, ko: e.target.value})} placeholder="한국어 뜻" style={inputStyle} />
+              <input value={newCard.en} onChange={(e) => setNewCard({...newCard, en: e.target.value})} placeholder={t('영어 표현', 'English expression')} style={inputStyle} />
+              <input value={newCard.ko} onChange={(e) => setNewCard({...newCard, ko: e.target.value})} placeholder={t('한국어 뜻', 'Korean meaning')} style={inputStyle} />
               <button onClick={addCard} style={{ ...primaryBtn, justifyContent: 'center' }}>
-                <Plus size={14} /> 단어장에 추가
+                <Plus size={14} /> {t('단어장에 추가', 'Add to Wordbook')}
               </button>
             </div>
           </Card>
@@ -2631,7 +3006,7 @@ function EnglishTab({ vocab, setVocab, articles, setArticles }) {
             <button onClick={saveArticle} style={{ ...primaryBtn, flex: 1, justifyContent: 'center' }}>
               <Save size={14} /> 저장
             </button>
-            <button onClick={() => setEditingId(null)} style={secondaryBtn}>취소</button>
+            <button onClick={() => setEditingId(null)} style={secondaryBtn}>{t('취소', 'Cancel')}</button>
             {editingId !== 'new' && (
               <button onClick={() => deleteArticle(editingId)} style={{ ...secondaryBtn, color: '#C45A3F', borderColor: 'rgba(196,90,63,0.3)' }}>
                 <Trash2 size={14} />
@@ -2639,6 +3014,16 @@ function EnglishTab({ vocab, setVocab, articles, setArticles }) {
             )}
           </div>
         </>
+      )}
+
+      {/* ===== 일기(Diary) 섹션 ===== */}
+      {section === 'diary' && (
+        <DiarySection
+          lang={lang}
+          diaries={diaries}
+          saveDiary={saveDiary}
+          deleteDiary={deleteDiary}
+        />
       )}
     </>
   );

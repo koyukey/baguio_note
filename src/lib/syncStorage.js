@@ -10,6 +10,7 @@ const COLUMN_MAP = {
   'baguio:vocab': 'vocab',
   'baguio:routines': 'routines',
   'baguio:articles': 'articles',
+  'baguio:diaries': 'diaries',
 };
 
 // 메모리 캐시 — 한 row를 통째로 들고 있다가 부분 업데이트 시 합쳐서 upsert
