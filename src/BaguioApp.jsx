@@ -15,27 +15,13 @@ import {
   useSortable, verticalListSortingStrategy
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { initSync, syncStorage, subscribeRemoteChanges } from './lib/syncStorage';
 
 // ============================================================
-//  스토리지 헬퍼 — localStorage 사용 (Vercel/일반 웹 환경)
+//  스토리지 — localStorage + Supabase 동기화 (lib/syncStorage)
+//  Supabase 미설정 시 localStorage로만 작동 (fallback)
 // ============================================================
-const storage = {
-  async get(key) {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        return window.localStorage.getItem(key); // null 또는 string
-      }
-    } catch (e) { /* private mode 등 */ }
-    return null;
-  },
-  async set(key, value) {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(key, value);
-      }
-    } catch (e) { /* ignore */ }
-  }
-};
+const storage = syncStorage;
 
 // ============================================================
 //  데이터: 영어 학습 카드 (바기오 어학연수 맞춤)
@@ -265,9 +251,12 @@ export default function BaguioApp() {
   const [routines, setRoutines] = useState(STARTER_ROUTINES);
   const [articles, setArticles] = useState([]);
 
-  // 첫 로드 시 저장된 데이터 불러오기
+  // 첫 로드 시 Supabase 동기화 → 저장된 데이터 불러오기
   useEffect(() => {
     (async () => {
+      // 1) Supabase 익명 세션 + 원격 row → localStorage 시드 (또는 첫 마이그레이션)
+      await initSync().catch(err => console.warn('[init] sync failed', err));
+      // 2) 로컬에서 읽기 (initSync가 원격 우선으로 시드해두었음)
       const lg = await storage.get('baguio:lang');
       if (lg === 'ko' || lg === 'en') setLang(lg);
       const t = await storage.get('baguio:trip');
@@ -325,6 +314,43 @@ export default function BaguioApp() {
   useEffect(() => { if (loaded) storage.set('baguio:vocab', JSON.stringify(vocab)); }, [vocab, loaded]);
   useEffect(() => { if (loaded) storage.set('baguio:routines', JSON.stringify(routines)); }, [routines, loaded]);
   useEffect(() => { if (loaded) storage.set('baguio:articles', JSON.stringify(articles)); }, [articles, loaded]);
+
+  // 다른 기기에서 변경된 내용을 Realtime으로 받아 상태에 반영
+  // 주의: storage.set은 자기 자신을 broadcast하지 않으니 echo 걱정 없음
+  // (Supabase Realtime은 다른 세션의 UPDATE만 전달함)
+  useEffect(() => {
+    if (!loaded) return;
+    const unsub = subscribeRemoteChanges((key, serialized) => {
+      try {
+        switch (key) {
+          case 'baguio:lang':
+            if (serialized === 'ko' || serialized === 'en') setLang(serialized);
+            break;
+          case 'baguio:trip': {
+            const p = JSON.parse(serialized);
+            if (p.start) setTripStart(p.start);
+            if (p.end) setTripEnd(p.end);
+            break;
+          }
+          case 'baguio:rate': {
+            const p = JSON.parse(serialized);
+            if (typeof p.rate === 'number') setPhpRate(p.rate);
+            if (p.updated) setRateUpdated(p.updated);
+            break;
+          }
+          case 'baguio:checklist': setChecklist(JSON.parse(serialized)); break;
+          case 'baguio:schedule': setSchedule(JSON.parse(serialized)); break;
+          case 'baguio:expenses': setExpenses(JSON.parse(serialized)); break;
+          case 'baguio:vocab': setVocab(JSON.parse(serialized)); break;
+          case 'baguio:routines': setRoutines(JSON.parse(serialized)); break;
+          case 'baguio:articles': setArticles(JSON.parse(serialized)); break;
+        }
+      } catch (e) {
+        console.warn('[realtime] apply failed', key, e);
+      }
+    });
+    return unsub;
+  }, [loaded]);
 
   // D-day 계산
   const today = new Date(); today.setHours(0,0,0,0);
