@@ -289,17 +289,17 @@ export default function BaguioApp() {
   const start = new Date(tripStart);
   const end = new Date(tripEnd);
   const dDay = Math.ceil((start - today) / (1000*60*60*24));
-  const totalDays = Math.ceil((end - start) / (1000*60*60*24)) + 1; // inclusive (5/16~6/13 = 29일)
+  const totalDays = Math.floor((end - start) / (1000*60*60*24)) + 1; // inclusive day count
   const daysIn = Math.floor((today - start) / (1000*60*60*24)) + 1; // 시작일이 Day 1
-  const weekNum = daysIn >= 1 ? Math.ceil(daysIn / 7) : 0;
-  const totalWeeks = Math.ceil(totalDays / 7);
+  // 주차: 5/16(토) 시작 → 5/16~5/22 = 1주차, 5/23~5/29 = 2주차 ... 6/13(토)은 5주차 첫날
+  // 단, 코스가 정확히 4주(28일)면 4, 그 이상이면 자연 ceil
+  const totalWeeks = Math.max(1, Math.round(totalDays / 7));
+  const weekNum = daysIn >= 1 ? Math.min(totalWeeks, Math.ceil(daysIn / 7)) : 0;
   const todayMonthDay = `${today.getMonth()+1}/${today.getDate()}`;
   const status = dDay > 0
     ? { label: `D-${dDay}`, sub: lang === 'ko' ? '출국까지' : 'until departure' }
-    : dDay === 0
-    ? { label: todayMonthDay, sub: lang === 'ko' ? '오늘 출국' : 'departing today' }
     : daysIn >= 1 && daysIn <= totalDays
-    ? { label: todayMonthDay, sub: lang === 'ko' ? `Day ${daysIn} / ${totalDays}` : `Day ${daysIn} / ${totalDays}` }
+    ? { label: todayMonthDay, sub: `Day ${daysIn} / ${totalDays}` }
     : { label: lang === 'ko' ? '종료' : 'completed', sub: lang === 'ko' ? '수고했어요' : 'well done' };
 
   const totalSpentPhp = expenses.reduce((s, e) => s + (e.currency === 'PHP' ? Number(e.amount) : Number(e.amount) / phpRate), 0);
