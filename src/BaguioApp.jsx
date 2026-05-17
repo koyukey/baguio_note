@@ -1922,8 +1922,8 @@ function SyncSection({ lang = 'ko' }) {
         setStep('code');
         setMsg({
           type: 'ok',
-          text: t(`${email}로 6자리 코드를 보냈습니다. 메일을 확인 후 아래에 입력하세요.`,
-                  `6-digit code sent to ${email}. Check your email and enter it below.`),
+          text: t(`${email}로 인증 코드를 보냈습니다. 메일을 확인 후 아래에 입력하세요.`,
+                  `Code sent to ${email}. Check your email and enter it below.`),
         });
         setEmail('');
       }
@@ -1976,12 +1976,12 @@ function SyncSection({ lang = 'ko' }) {
               <div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input
-                    type="text" inputMode="numeric" maxLength={6}
+                    type="text" inputMode="numeric" maxLength={8}
                     value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                    placeholder={t('6자리 코드', '6-digit code')}
-                    style={{ ...inputStyle, flex: 1, fontSize: 18, letterSpacing: '0.4em', textAlign: 'center' }}
+                    placeholder={t('인증 코드', 'Code')}
+                    style={{ ...inputStyle, flex: 1, fontSize: 18, letterSpacing: '0.3em', textAlign: 'center' }}
                   />
-                  <button onClick={submitCode} disabled={busy || code.length !== 6} style={primaryBtn}>{t('인증', 'Verify')}</button>
+                  <button onClick={submitCode} disabled={busy || code.length < 6} style={primaryBtn}>{t('인증', 'Verify')}</button>
                 </div>
                 <button
                   onClick={() => { setStep('email'); setCode(''); setMsg(null); }}
@@ -2033,12 +2033,12 @@ function SyncSection({ lang = 'ko' }) {
               <div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input
-                    type="text" inputMode="numeric" maxLength={6}
+                    type="text" inputMode="numeric" maxLength={8}
                     value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                    placeholder={t('6자리 코드', '6-digit code')}
-                    style={{ ...inputStyle, flex: 1, fontSize: 18, letterSpacing: '0.4em', textAlign: 'center' }}
+                    placeholder={t('인증 코드', 'Code')}
+                    style={{ ...inputStyle, flex: 1, fontSize: 18, letterSpacing: '0.3em', textAlign: 'center' }}
                   />
-                  <button onClick={submitCode} disabled={busy || code.length !== 6} style={primaryBtn}>{t('인증', 'Verify')}</button>
+                  <button onClick={submitCode} disabled={busy || code.length < 6} style={primaryBtn}>{t('인증', 'Verify')}</button>
                 </div>
                 <button
                   onClick={() => { setStep('email'); setCode(''); setMsg(null); }}

@@ -79,15 +79,16 @@ export async function sendOtpCode(email) {
   return { ok: true };
 }
 
-// 받은 6자리 코드로 실제 로그인 (세션 발급)
+// 받은 OTP 코드로 실제 로그인 (Supabase는 보통 6자리지만 6~8자리 가능)
 export async function verifyOtpCode(email, code) {
   if (!supabase) return { ok: false, error: 'Supabase not configured' };
-  if (!code || !/^\d{6}$/.test(code.trim())) {
-    return { ok: false, error: '6자리 숫자 코드를 입력하세요.' };
+  const clean = (code || '').trim();
+  if (!/^\d{6,8}$/.test(clean)) {
+    return { ok: false, error: '6~8자리 숫자 코드를 입력하세요.' };
   }
   const { error } = await supabase.auth.verifyOtp({
     email,
-    token: code.trim(),
+    token: clean,
     type: 'email',
   });
   if (error) {
