@@ -125,28 +125,37 @@ export async function initSync() {
     }
   }
 
-  // Realtime 구독: 같은 user_id의 row가 다른 기기에서 변경되면 받기
-  supabase
-    .channel(`user_data:${userId}`)
-    .on('postgres_changes',
-      { event: 'UPDATE', schema: 'public', table: 'user_data', filter: `user_id=eq.${userId}` },
-      (payload) => {
-        const newRow = payload.new;
-        if (!newRow) return;
-        for (const [key, col] of Object.entries(COLUMN_MAP)) {
-          const v = newRow[col];
-          if (v === null || v === undefined) continue;
-          const serialized = typeof v === 'string' ? v : JSON.stringify(v);
-          const prev = localGet(key);
-          if (prev !== serialized) {
-            localSet(key, serialized);
-            notify(key, serialized);
-          }
-        }
-        rowCache = newRow;
+  // 포커스 복귀 시 자동 재fetch — 다른 기기에서 변경된 내용 따라잡기
+  // (Realtime WebSocket 대신 가벼운 polling-on-focus 전략)
+  const refetchAndApply = async () => {
+    if (!supabase || !userId) return;
+    const { data: row, error } = await supabase
+      .from('user_data')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error || !row) return;
+    for (const [key, col] of Object.entries(COLUMN_MAP)) {
+      const v = row[col];
+      if (v === null || v === undefined) continue;
+      const serialized = typeof v === 'string' ? v : JSON.stringify(v);
+      const prev = localGet(key);
+      if (prev !== serialized) {
+        localSet(key, serialized);
+        notify(key, serialized);
       }
-    )
-    .subscribe();
+    }
+    rowCache = row;
+  };
+
+  if (typeof window !== 'undefined') {
+    // 탭이 다시 보일 때 (백그라운드 → 포그라운드)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') refetchAndApply();
+    });
+    // 윈도우 포커스 (다른 앱에서 돌아옴)
+    window.addEventListener('focus', refetchAndApply);
+  }
 
   return { ok: true, userId };
 }
