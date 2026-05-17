@@ -76,6 +76,48 @@ const STARTER_CHECKLIST = [
   { id: 'seed-9', text: '상비약 (해열·소화·지사제)', done: false, group: '준비', order: 3, completedAt: null },
 ];
 
+// ============================================================
+//  데이터: 동기부여 문장 — 날짜 기반 회전
+//  (영화 명대사 / 미국 속담 / 명언 / 따뜻한 한 줄 믹스)
+// ============================================================
+const MOTIVATIONS = [
+  // 영화 / 픽션
+  { en: "The cave you fear to enter holds the treasure you seek.", ko: "들어가기 두려운 동굴에 네가 찾는 보물이 있다.", src: "Joseph Campbell" },
+  { en: "Just keep swimming.", ko: "그냥 계속 헤엄쳐.", src: "Finding Nemo" },
+  { en: "Do, or do not. There is no try.", ko: "하라, 아니면 하지 마라. 시도란 없다.", src: "Yoda" },
+  { en: "You miss 100% of the shots you don't take.", ko: "쏘지 않은 슛은 100% 빗나간다.", src: "Wayne Gretzky" },
+  { en: "Today, well lived, makes every yesterday a dream and every tomorrow a vision of hope.", ko: "오늘 하루를 잘 살면, 어제는 꿈이 되고 내일은 희망의 풍경이 된다.", src: "Sanskrit proverb" },
+  { en: "It always seems impossible until it's done.", ko: "끝내고 나면 불가능해 보이지 않는다.", src: "Nelson Mandela" },
+  { en: "Today is a gift. That's why it's called the present.", ko: "오늘은 선물이다. 그래서 'present'라 부른다.", src: "Kung Fu Panda" },
+  { en: "Adventure is out there.", ko: "모험은 저 바깥에 있어.", src: "Up" },
+  { en: "Stories with happy endings just haven't reached the end yet.", ko: "해피엔딩으로 끝나는 이야기는 아직 끝나지 않았을 뿐이다.", src: "—" },
+  { en: "Not all those who wander are lost.", ko: "방황하는 모두가 길을 잃은 건 아니다.", src: "Tolkien" },
+
+  // 영어 학습 / 시작 / 인내
+  { en: "A journey of a thousand miles begins with a single step.", ko: "천 리 길도 한 걸음부터.", src: "Lao Tzu" },
+  { en: "Fall seven times, stand up eight.", ko: "일곱 번 넘어지면 여덟 번 일어나라.", src: "Japanese proverb" },
+  { en: "Slow and steady wins the race.", ko: "느려도 꾸준한 자가 이긴다.", src: "Aesop" },
+  { en: "Practice doesn't make perfect. Perfect practice makes perfect.", ko: "연습이 완벽을 만드는 게 아니다. 제대로 된 연습이 완벽을 만든다.", src: "Vince Lombardi" },
+  { en: "The expert in anything was once a beginner.", ko: "모든 전문가는 한때 초보였다.", src: "Helen Hayes" },
+  { en: "If you want to go fast, go alone. If you want to go far, go together.", ko: "빨리 가려면 혼자, 멀리 가려면 함께.", src: "African proverb" },
+  { en: "Don't count the days. Make the days count.", ko: "날짜를 세지 말고, 날들이 의미를 갖게 하라.", src: "Muhammad Ali" },
+  { en: "Action is the antidote to despair.", ko: "행동은 절망의 해독제다.", src: "Joan Baez" },
+  { en: "What you do today can improve all your tomorrows.", ko: "오늘 한 일이 모든 내일을 바꾼다.", src: "Ralph Marston" },
+  { en: "Tough times never last, but tough people do.", ko: "힘든 시기는 지나가지만, 단단한 사람은 남는다.", src: "Robert Schuller" },
+
+  // 따뜻한 한 줄 / 응원
+  { en: "Wherever you go, go with all your heart.", ko: "어디로 가든, 온 마음으로 가라.", src: "Confucius" },
+  { en: "The best way out is always through.", ko: "벗어나는 가장 좋은 길은 언제나 통과하는 것.", src: "Robert Frost" },
+  { en: "You are braver than you believe, stronger than you seem, and smarter than you think.", ko: "너는 생각보다 용감하고, 보이는 것보다 강하며, 스스로 아는 것보다 똑똑하다.", src: "Christopher Robin" },
+  { en: "Bloom where you are planted.", ko: "심긴 곳에서 꽃 피워라.", src: "Saint Francis" },
+  { en: "Every accomplishment starts with the decision to try.", ko: "모든 성취는 해보겠다는 결심에서 시작된다.", src: "John F. Kennedy" },
+  { en: "Be the change you wish to see in the world.", ko: "네가 세상에서 보고 싶은 변화, 네가 되어라.", src: "Gandhi" },
+  { en: "Today's accomplishments were yesterday's impossibilities.", ko: "오늘의 성취는 어제의 불가능이었다.", src: "Robert H. Schuller" },
+  { en: "The future belongs to those who believe in the beauty of their dreams.", ko: "미래는 자신의 꿈의 아름다움을 믿는 사람의 것이다.", src: "Eleanor Roosevelt" },
+  { en: "Small steps every day.", ko: "매일, 작은 한 걸음씩.", src: "—" },
+  { en: "Yesterday is history, tomorrow is a mystery, today is a gift.", ko: "어제는 역사, 내일은 미스터리, 오늘은 선물.", src: "Bil Keane" },
+];
+
 const STARTER_SCHEDULE = [
   // 월요일 — 풀 스케줄 예시 (어학원에서 받으면 본인 시간표로 수정)
   { day: 'mon', time: '08:00', subject: 'Speaking 1:1', teacher: 'Teacher Maria', room: 'Room 201' },
@@ -614,6 +656,9 @@ function DashboardTab({ lang = 'ko', status, dDay, totalDays, daysIn, weekNum, t
   const todayExpression = vocab.length > 0 ? vocab[dayOfYear % vocab.length] : null;
   const [exprSide, setExprSide] = useState('en');
 
+  // 오늘의 동기부여 문장 (날짜 기반 회전)
+  const todayMotivation = MOTIVATIONS[dayOfYear % MOTIVATIONS.length];
+
   return (
     <>
       {/* 메인 카드 — 학습 진척 */}
@@ -637,12 +682,25 @@ function DashboardTab({ lang = 'ko', status, dDay, totalDays, daysIn, weekNum, t
           )}
         </div>
 
-        {/* 헤드라인 — 출국 전 / 종료 후 */}
+        {/* 헤드라인 — 출국 전 / 출국 당일 / 종료 후 */}
         {(heroState.type === 'pre-trip' || heroState.type === 'departure' || heroState.type === 'after') && (
-          <div className="display" style={{ fontSize: 22, lineHeight: 1.25, fontWeight: 600, marginBottom: 16, letterSpacing: '-0.01em' }}>
-            {heroState.type === 'pre-trip' && (lang === 'ko' ? '곧 시작됩니다.' : 'Starting soon.')}
-            {heroState.type === 'departure' && (lang === 'ko' ? '오늘 출국합니다.' : 'Departing today.')}
-            {heroState.type === 'after' && (lang === 'ko' ? '여정이 끝났습니다.' : 'Journey complete.')}
+          <div style={{ marginBottom: 16 }}>
+            {heroState.type === 'departure' ? (
+              // 출국 당일 — 동기부여 문장
+              <>
+                <div className="display-italic" style={{ fontSize: 20, lineHeight: 1.35, fontWeight: 500, letterSpacing: '-0.01em' }}>
+                  {lang === 'ko' ? `"${todayMotivation.ko}"` : `"${todayMotivation.en}"`}
+                </div>
+                <div style={{ fontSize: 10, opacity: 0.55, marginTop: 8, letterSpacing: '0.05em' }}>
+                  — {todayMotivation.src}
+                </div>
+              </>
+            ) : (
+              <div className="display" style={{ fontSize: 22, lineHeight: 1.25, fontWeight: 600, letterSpacing: '-0.01em' }}>
+                {heroState.type === 'pre-trip' && (lang === 'ko' ? '곧 시작됩니다.' : 'Starting soon.')}
+                {heroState.type === 'after' && (lang === 'ko' ? '여정이 끝났습니다.' : 'Journey complete.')}
+              </div>
+            )}
           </div>
         )}
 
@@ -689,24 +747,34 @@ function DashboardTab({ lang = 'ko', status, dDay, totalDays, daysIn, weekNum, t
         {/* 오늘 수업 완료 */}
         {heroState.type === 'classes-done' && (
           <div style={{ marginBottom: 16 }}>
-            <div className="display-italic" style={{ fontSize: 24, fontWeight: 500, lineHeight: 1.2, marginBottom: 6 }}>
-              오늘 수업, 끝.
+            <div className="display-italic" style={{ fontSize: 22, fontWeight: 500, lineHeight: 1.3, marginBottom: 8 }}>
+              {lang === 'ko' ? `"${todayMotivation.ko}"` : `"${todayMotivation.en}"`}
             </div>
-            <div style={{ fontSize: 12, opacity: 0.7 }}>
-              마지막 수업: {heroState.last?.subject}
+            <div style={{ fontSize: 10, opacity: 0.55, letterSpacing: '0.05em', marginBottom: 8 }}>
+              — {todayMotivation.src}
             </div>
+            {heroState.last?.subject && (
+              <div style={{ fontSize: 11, opacity: 0.6 }}>
+                {lang === 'ko' ? '마지막 수업' : 'Last class'}: {heroState.last.subject}
+              </div>
+            )}
           </div>
         )}
 
         {/* 휴식일 (수업 없는 날) */}
         {heroState.type === 'rest-day' && (
           <div style={{ marginBottom: 16 }}>
-            <div className="display-italic" style={{ fontSize: 22, fontWeight: 500, lineHeight: 1.25, marginBottom: 8 }}>
-              충전하는 하루.
+            <div className="display-italic" style={{ fontSize: 22, fontWeight: 500, lineHeight: 1.3, marginBottom: 8 }}>
+              {lang === 'ko' ? `"${todayMotivation.ko}"` : `"${todayMotivation.en}"`}
+            </div>
+            <div style={{ fontSize: 10, opacity: 0.55, letterSpacing: '0.05em', marginBottom: 8 }}>
+              — {todayMotivation.src}
             </div>
             {heroState.nextClass && (
-              <div style={{ fontSize: 12, opacity: 0.75 }}>
-                {heroState.daysAway === 1 ? '내일' : `${heroState.daysAway}일 뒤 ${heroState.nextDayKo}요일`} → {heroState.nextClass.time} {heroState.nextClass.subject}
+              <div style={{ fontSize: 11, opacity: 0.7 }}>
+                {lang === 'ko'
+                  ? `${heroState.daysAway === 1 ? '내일' : `${heroState.daysAway}일 뒤 ${heroState.nextDayKo}요일`} → ${heroState.nextClass.time} ${heroState.nextClass.subject}`
+                  : `${heroState.daysAway === 1 ? 'Tomorrow' : `In ${heroState.daysAway} days`} → ${heroState.nextClass.time} ${heroState.nextClass.subject}`}
               </div>
             )}
           </div>
