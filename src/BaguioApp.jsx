@@ -4,8 +4,17 @@ import {
   Plus, Trash2, Check, X, RefreshCw, ArrowRightLeft,
   Plane, MapPin, Sun, Mountain, Coffee, Edit3, Save,
   ChevronRight, GraduationCap, Languages, RotateCcw, User,
-  Flame, Pencil, FileText
+  Flame, Pencil, FileText, GripVertical
 } from 'lucide-react';
+import {
+  DndContext, closestCorners, KeyboardSensor, PointerSensor,
+  TouchSensor, useSensor, useSensors
+} from '@dnd-kit/core';
+import {
+  arrayMove, SortableContext, sortableKeyboardCoordinates,
+  useSortable, verticalListSortingStrategy
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 // ============================================================
 //  스토리지 헬퍼 — localStorage 사용 (Vercel/일반 웹 환경)
@@ -55,16 +64,16 @@ const STARTER_PHRASES = [
 
 const STARTER_CHECKLIST = [
   // 도착 첫날
-  { id: 'seed-1', text: '어학원 체크인', done: false, group: '오늘', completedAt: null },
-  { id: 'seed-2', text: '기숙사 도착 신고', done: false, group: '오늘', completedAt: null },
-  { id: 'seed-3', text: '오리엔테이션 참석', done: false, group: '오늘', completedAt: null },
-  { id: 'seed-4', text: '심카드 + GCash 개설', done: false, group: '오늘', completedAt: null },
-  { id: 'seed-5', text: '레벨 테스트 준비', done: false, group: '과제', completedAt: null },
+  { id: 'seed-1', text: '어학원 체크인', done: false, group: '오늘', order: 0, completedAt: null },
+  { id: 'seed-2', text: '기숙사 도착 신고', done: false, group: '오늘', order: 1, completedAt: null },
+  { id: 'seed-3', text: '오리엔테이션 참석', done: false, group: '오늘', order: 2, completedAt: null },
+  { id: 'seed-4', text: '심카드 + GCash 개설', done: false, group: '오늘', order: 3, completedAt: null },
+  { id: 'seed-5', text: '레벨 테스트 준비', done: false, group: '과제', order: 0, completedAt: null },
   // 출발 전 (내일 출국)
-  { id: 'seed-6', text: '여권 + 비자 서류 확인', done: false, group: '준비', completedAt: null },
-  { id: 'seed-7', text: '돼지코 (220V 어댑터)', done: false, group: '준비', completedAt: null },
-  { id: 'seed-8', text: '긴팔 자켓 (바기오 서늘함)', done: false, group: '준비', completedAt: null },
-  { id: 'seed-9', text: '상비약 (해열·소화·지사제)', done: false, group: '준비', completedAt: null },
+  { id: 'seed-6', text: '여권 + 비자 서류 확인', done: false, group: '준비', order: 0, completedAt: null },
+  { id: 'seed-7', text: '돼지코 (220V 어댑터)', done: false, group: '준비', order: 1, completedAt: null },
+  { id: 'seed-8', text: '긴팔 자켓 (바기오 서늘함)', done: false, group: '준비', order: 2, completedAt: null },
+  { id: 'seed-9', text: '상비약 (해열·소화·지사제)', done: false, group: '준비', order: 3, completedAt: null },
 ];
 
 const STARTER_SCHEDULE = [
@@ -195,6 +204,9 @@ export default function BaguioApp() {
   const [tab, setTab] = useState('home');
   const [loaded, setLoaded] = useState(false);
 
+  // 언어 (ko | en)
+  const [lang, setLang] = useState('ko');
+
   // 여행 정보
   const [tripStart, setTripStart] = useState('2026-05-16');
   const [tripEnd, setTripEnd] = useState('2026-06-13');
@@ -214,6 +226,8 @@ export default function BaguioApp() {
   // 첫 로드 시 저장된 데이터 불러오기
   useEffect(() => {
     (async () => {
+      const lg = await storage.get('baguio:lang');
+      if (lg === 'ko' || lg === 'en') setLang(lg);
       const t = await storage.get('baguio:trip');
       if (t) {
         try { const p = JSON.parse(t); setTripStart(p.start || tripStart); setTripEnd(p.end || tripEnd); } catch {}
@@ -226,13 +240,22 @@ export default function BaguioApp() {
       if (c) {
         try {
           const parsed = JSON.parse(c);
-          const migrated = parsed.map((item, idx) => ({
-            id: item.id || `legacy-${idx}-${Date.now()}`,
-            text: item.text,
-            done: !!item.done,
-            group: item.group || '기타',
-            completedAt: item.completedAt ?? (item.done ? new Date().toISOString() : null)
-          }));
+          // 그룹별 order 부여 (legacy 데이터에 order가 없는 경우)
+          const groupCounters = {};
+          const migrated = parsed.map((item, idx) => {
+            const grp = item.group || '기타';
+            if (typeof item.order !== 'number') {
+              groupCounters[grp] = (groupCounters[grp] ?? -1) + 1;
+            }
+            return {
+              id: item.id || `legacy-${idx}-${Date.now()}`,
+              text: item.text,
+              done: !!item.done,
+              group: grp,
+              order: typeof item.order === 'number' ? item.order : groupCounters[grp],
+              completedAt: item.completedAt ?? (item.done ? new Date().toISOString() : null)
+            };
+          });
           setChecklist(migrated);
         } catch {}
       }
@@ -251,6 +274,7 @@ export default function BaguioApp() {
   }, []);
 
   // 저장 (loaded 이후만)
+  useEffect(() => { if (loaded) storage.set('baguio:lang', lang); }, [lang, loaded]);
   useEffect(() => { if (loaded) storage.set('baguio:trip', JSON.stringify({ start: tripStart, end: tripEnd })); }, [tripStart, tripEnd, loaded]);
   useEffect(() => { if (loaded) storage.set('baguio:rate', JSON.stringify({ rate: phpRate, updated: rateUpdated })); }, [phpRate, rateUpdated, loaded]);
   useEffect(() => { if (loaded) storage.set('baguio:checklist', JSON.stringify(checklist)); }, [checklist, loaded]);
@@ -265,15 +289,18 @@ export default function BaguioApp() {
   const start = new Date(tripStart);
   const end = new Date(tripEnd);
   const dDay = Math.ceil((start - today) / (1000*60*60*24));
-  const totalDays = Math.ceil((end - start) / (1000*60*60*24));
-  const daysIn = Math.ceil((today - start) / (1000*60*60*24));
+  const totalDays = Math.ceil((end - start) / (1000*60*60*24)) + 1; // inclusive (5/16~6/13 = 29일)
+  const daysIn = Math.floor((today - start) / (1000*60*60*24)) + 1; // 시작일이 Day 1
+  const weekNum = daysIn >= 1 ? Math.ceil(daysIn / 7) : 0;
+  const totalWeeks = Math.ceil(totalDays / 7);
+  const todayMonthDay = `${today.getMonth()+1}/${today.getDate()}`;
   const status = dDay > 0
-    ? { label: `D-${dDay}`, sub: '출국까지' }
+    ? { label: `D-${dDay}`, sub: lang === 'ko' ? '출국까지' : 'until departure' }
     : dDay === 0
-    ? { label: '오늘 출발', sub: 'Mabuhay!' }
-    : daysIn >= 0 && daysIn <= totalDays
-    ? { label: `Day ${daysIn+1}`, sub: `총 ${totalDays}일 중` }
-    : { label: '여정 종료', sub: '수고했어요' };
+    ? { label: todayMonthDay, sub: lang === 'ko' ? '오늘 출국' : 'departing today' }
+    : daysIn >= 1 && daysIn <= totalDays
+    ? { label: todayMonthDay, sub: lang === 'ko' ? `Day ${daysIn} / ${totalDays}` : `Day ${daysIn} / ${totalDays}` }
+    : { label: lang === 'ko' ? '종료' : 'completed', sub: lang === 'ko' ? '수고했어요' : 'well done' };
 
   const totalSpentPhp = expenses.reduce((s, e) => s + (e.currency === 'PHP' ? Number(e.amount) : Number(e.amount) / phpRate), 0);
 
@@ -314,8 +341,8 @@ export default function BaguioApp() {
           헤더
       ============================================================ */}
       <header style={{ padding: '28px 24px 12px', position: 'relative', zIndex: 2 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: '11px', letterSpacing: '0.2em', color: '#7A8E7E', fontWeight: 500, marginBottom: 4 }}>
               CITY OF PINES · 1,540M
             </div>
@@ -323,15 +350,51 @@ export default function BaguioApp() {
               Baguio<span className="display-italic" style={{ color: '#C45A3F', fontWeight: 400 }}>, mi.</span>
             </h1>
             <div style={{ marginTop: 8, fontSize: '13px', color: '#5C6F62' }}>
-              어학연수 여정 · {tripStart} → {tripEnd}
+              {lang === 'ko'
+                ? `어학연수 · ${tripStart} → ${tripEnd}`
+                : `Language study · ${tripStart} → ${tripEnd}`}
             </div>
           </div>
-          <div className="stamp" style={{ marginTop: 4 }}>
-            <div style={{ fontSize: '9px', letterSpacing: '0.15em', color: '#1F3A2E', fontWeight: 600 }}>STATUS</div>
-            <div className="display" style={{ fontSize: '20px', fontWeight: 700, color: '#C45A3F', lineHeight: 1 }}>
-              {status.label}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+            {/* KO / EN 토글 */}
+            <div style={{
+              display: 'inline-flex',
+              border: '1px solid rgba(31,58,46,0.25)',
+              borderRadius: 999,
+              overflow: 'hidden',
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: '0.1em'
+            }}>
+              {['ko', 'en'].map(l => (
+                <button
+                  key={l}
+                  onClick={() => setLang(l)}
+                  aria-pressed={lang === l}
+                  style={{
+                    padding: '4px 10px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: lang === l ? '#1F3A2E' : 'transparent',
+                    color: lang === l ? '#F5EFE0' : '#1F3A2E',
+                    transition: 'background 0.15s'
+                  }}
+                >{l.toUpperCase()}</button>
+              ))}
             </div>
-            <div style={{ fontSize: '9px', color: '#5C6F62', letterSpacing: '0.1em' }}>{status.sub}</div>
+            {/* 상태 카드: 날짜 + Day N */}
+            <div style={{
+              border: '1px solid rgba(31,58,46,0.2)',
+              borderRadius: 8,
+              padding: '6px 12px',
+              textAlign: 'right',
+              background: 'rgba(255,255,255,0.35)'
+            }}>
+              <div className="display" style={{ fontSize: '18px', fontWeight: 700, color: '#1F3A2E', lineHeight: 1.1 }}>
+                {status.label}
+              </div>
+              <div style={{ fontSize: '10px', color: '#5C6F62', letterSpacing: '0.05em', marginTop: 2 }}>{status.sub}</div>
+            </div>
           </div>
         </div>
       </header>
@@ -342,7 +405,9 @@ export default function BaguioApp() {
       <main style={{ padding: '8px 20px', position: 'relative', zIndex: 2 }} key={tab}>
         {tab === 'home' && (
           <DashboardTab
+            lang={lang}
             status={status} dDay={dDay} totalDays={totalDays} daysIn={daysIn}
+            weekNum={weekNum} totalWeeks={totalWeeks}
             phpRate={phpRate} rateUpdated={rateUpdated}
             checklist={checklist} setChecklist={setChecklist}
             schedule={schedule} expenses={expenses}
@@ -451,7 +516,7 @@ function SectionTitle({ children, kicker }) {
 // ============================================================
 //  대시보드 탭 — 학습 / 수업 중심
 // ============================================================
-function DashboardTab({ status, dDay, totalDays, daysIn, phpRate, rateUpdated, checklist, setChecklist, schedule, expenses, vocab, totalSpentPhp, goTo }) {
+function DashboardTab({ lang = 'ko', status, dDay, totalDays, daysIn, weekNum, totalWeeks, phpRate, rateUpdated, checklist, setChecklist, schedule, expenses, vocab, totalSpentPhp, goTo }) {
   const doneCount = checklist.filter(c => c.done).length;
   const pendingCount = checklist.filter(c => !c.done).length;
 
@@ -557,11 +622,11 @@ function DashboardTab({ status, dDay, totalDays, daysIn, phpRate, rateUpdated, c
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
             <GraduationCap size={16} style={{ opacity: 0.7 }} />
             <span style={{ fontSize: 11, letterSpacing: '0.15em', opacity: 0.7 }}>
-              {heroState.type === 'in-class' && '진행 중'}
-              {heroState.type === 'break' && '쉬는 시간'}
-              {heroState.type === 'before-first' && '오늘 첫 수업'}
-              {heroState.type === 'classes-done' && '오늘 수업 완료'}
-              {heroState.type === 'rest-day' && '오늘 휴식일'}
+              {heroState.type === 'in-class' && (lang === 'ko' ? '진행 중' : 'IN CLASS')}
+              {heroState.type === 'break' && (lang === 'ko' ? '쉬는 시간' : 'BREAK')}
+              {heroState.type === 'before-first' && (lang === 'ko' ? '오늘 첫 수업' : "TODAY'S FIRST CLASS")}
+              {heroState.type === 'classes-done' && (lang === 'ko' ? '오늘 수업 완료' : 'CLASSES DONE')}
+              {heroState.type === 'rest-day' && (lang === 'ko' ? '오늘 휴식일' : 'REST DAY')}
               {(heroState.type === 'pre-trip' || heroState.type === 'departure' || heroState.type === 'after') && 'STUDY PROGRAM'}
             </span>
           </div>
@@ -572,12 +637,12 @@ function DashboardTab({ status, dDay, totalDays, daysIn, phpRate, rateUpdated, c
           )}
         </div>
 
-        {/* 시적 문구 — 출국 전 / 종료 후 */}
+        {/* 헤드라인 — 출국 전 / 종료 후 */}
         {(heroState.type === 'pre-trip' || heroState.type === 'departure' || heroState.type === 'after') && (
-          <div className="display-italic" style={{ fontSize: 26, lineHeight: 1.2, fontWeight: 500, marginBottom: 16 }}>
-            {heroState.type === 'pre-trip' && '곧, 첫 수업이 시작됩니다.'}
-            {heroState.type === 'departure' && '오늘, 새로운 학기로 떠납니다.'}
-            {heroState.type === 'after' && '수고했어요. 다음 챕터로.'}
+          <div className="display" style={{ fontSize: 22, lineHeight: 1.25, fontWeight: 600, marginBottom: 16, letterSpacing: '-0.01em' }}>
+            {heroState.type === 'pre-trip' && (lang === 'ko' ? '곧 시작됩니다.' : 'Starting soon.')}
+            {heroState.type === 'departure' && (lang === 'ko' ? '오늘 출국합니다.' : 'Departing today.')}
+            {heroState.type === 'after' && (lang === 'ko' ? '여정이 끝났습니다.' : 'Journey complete.')}
           </div>
         )}
 
@@ -647,26 +712,33 @@ function DashboardTab({ status, dDay, totalDays, daysIn, phpRate, rateUpdated, c
           </div>
         )}
 
-        {/* 3-column stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, paddingTop: 14, borderTop: '1px solid rgba(245,239,224,0.15)' }}>
+        {/* DAY / WEEK stats */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, paddingTop: 14, borderTop: '1px solid rgba(245,239,224,0.15)' }}>
           <div>
             <div style={{ fontSize: 9, opacity: 0.6, letterSpacing: '0.12em', fontWeight: 600 }}>DAY</div>
             <div className="display" style={{ fontSize: 22, fontWeight: 700, lineHeight: 1, marginTop: 4 }}>
-              {dDay > 0 ? `D-${dDay}` : (daysIn >= 0 && daysIn <= totalDays) ? daysIn + 1 : '—'}
+              {dDay > 0 ? `D-${dDay}` : (daysIn >= 1 && daysIn <= totalDays) ? daysIn : '—'}
             </div>
             <div style={{ fontSize: 9, opacity: 0.55, marginTop: 3 }}>
-              {dDay > 0 ? '출국까지' : (daysIn >= 0 && daysIn <= totalDays) ? `/ ${totalDays}일` : '종료'}
+              {dDay > 0
+                ? (lang === 'ko' ? '출국까지' : 'until departure')
+                : (daysIn >= 1 && daysIn <= totalDays)
+                  ? (lang === 'ko' ? `/ ${totalDays}일 중` : `of ${totalDays}`)
+                  : (lang === 'ko' ? '종료' : 'completed')}
             </div>
           </div>
           <div>
             <div style={{ fontSize: 9, opacity: 0.6, letterSpacing: '0.12em', fontWeight: 600 }}>WEEK</div>
-            <div className="display" style={{ fontSize: 22, fontWeight: 700, lineHeight: 1, marginTop: 4 }}>{weeklyCount}</div>
-            <div style={{ fontSize: 9, opacity: 0.55, marginTop: 3 }}>주간 수업</div>
-          </div>
-          <div>
-            <div style={{ fontSize: 9, opacity: 0.6, letterSpacing: '0.12em', fontWeight: 600 }}>VOCAB</div>
-            <div className="display" style={{ fontSize: 22, fontWeight: 700, lineHeight: 1, marginTop: 4 }}>{vocab.length}</div>
-            <div style={{ fontSize: 9, opacity: 0.55, marginTop: 3 }}>표현</div>
+            <div className="display" style={{ fontSize: 22, fontWeight: 700, lineHeight: 1, marginTop: 4 }}>
+              {dDay > 0 ? '—' : (weekNum >= 1 && weekNum <= totalWeeks) ? weekNum : '—'}
+            </div>
+            <div style={{ fontSize: 9, opacity: 0.55, marginTop: 3 }}>
+              {dDay > 0
+                ? (lang === 'ko' ? '시작 전' : 'not started')
+                : (weekNum >= 1 && weekNum <= totalWeeks)
+                  ? (lang === 'ko' ? `/ ${totalWeeks}주 과정` : `of ${totalWeeks} weeks`)
+                  : (lang === 'ko' ? '종료' : 'completed')}
+            </div>
           </div>
         </div>
 
@@ -815,6 +887,50 @@ function DashboardTab({ status, dDay, totalDays, daysIn, phpRate, rateUpdated, c
 // ============================================================
 //  할 일 (TODO) 탭 — 할 일 + 루틴 + 완료 로그
 // ============================================================
+function SortableTodoItem({ item, isLast, onToggle, onRemove }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    background: isDragging ? 'rgba(196,90,63,0.06)' : 'transparent',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '10px 8px',
+    borderBottom: !isLast ? '1px dashed rgba(31,58,46,0.08)' : 'none',
+    touchAction: 'none'
+  };
+  return (
+    <div ref={setNodeRef} style={style}>
+      {/* 드래그 핸들 — 터치/마우스 양쪽 */}
+      <button
+        {...attributes}
+        {...listeners}
+        aria-label="순서 변경 핸들"
+        style={{
+          background: 'transparent', border: 'none', padding: 4,
+          cursor: 'grab', touchAction: 'none', display: 'flex', alignItems: 'center',
+          color: '#A8B8AB'
+        }}
+      >
+        <GripVertical size={16} />
+      </button>
+      <button onClick={() => onToggle(item.id)} style={{
+        width: 22, height: 22, borderRadius: 6,
+        border: '2px solid #1F3A2E',
+        background: 'transparent',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: 'pointer', flexShrink: 0
+      }} />
+      <span style={{ flex: 1, fontSize: 14 }}>{item.text}</span>
+      <button onClick={() => onRemove(item.id)} style={iconBtn}>
+        <X size={14} color="#7A8E7E" />
+      </button>
+    </div>
+  );
+}
+
 function PlanTab({ checklist, setChecklist, routines, setRoutines }) {
   const [newItem, setNewItem] = useState('');
   const [newGroup, setNewGroup] = useState('오늘');
@@ -822,7 +938,10 @@ function PlanTab({ checklist, setChecklist, routines, setRoutines }) {
   const [showLog, setShowLog] = useState(false);
 
   const DEFAULT_GROUPS = ['오늘', '과제', '영어', '읽기', '단어', '준비', '기타'];
-  const active = checklist.filter(c => !c.done);
+  const active = checklist
+    .filter(c => !c.done)
+    .slice()
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const done = checklist
     .filter(c => c.done)
     .sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''));
@@ -833,6 +952,59 @@ function PlanTab({ checklist, setChecklist, routines, setRoutines }) {
     ...DEFAULT_GROUPS.filter(g => activeGroupSet.has(g)),
     ...[...activeGroupSet].filter(g => !DEFAULT_GROUPS.includes(g))
   ];
+
+  // ===== DnD 센서 (마우스 + 터치 + 키보드) =====
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  // 항목 ID로 그룹 찾기 (Sortable에서 over 대상이 항목일 때)
+  const findContainer = (id) => {
+    if (orderedGroups.includes(id)) return id; // 빈 그룹 placeholder
+    const item = active.find(c => c.id === id);
+    return item ? item.group : null;
+  };
+
+  const handleDragEnd = (event) => {
+    const { active: a, over } = event;
+    if (!over) return;
+    const fromGroup = findContainer(a.id);
+    const toGroup = findContainer(over.id);
+    if (!fromGroup || !toGroup) return;
+    if (a.id === over.id && fromGroup === toGroup) return;
+
+    if (fromGroup === toGroup) {
+      // 같은 그룹 내 순서 변경
+      const groupItems = active.filter(c => c.group === fromGroup);
+      const oldIdx = groupItems.findIndex(c => c.id === a.id);
+      const newIdx = groupItems.findIndex(c => c.id === over.id);
+      if (oldIdx === -1 || newIdx === -1) return;
+      const reordered = arrayMove(groupItems, oldIdx, newIdx);
+      const reorderedIds = new Set(reordered.map(c => c.id));
+      setChecklist(checklist.map(c => {
+        if (!reorderedIds.has(c.id)) return c;
+        const newPos = reordered.findIndex(r => r.id === c.id);
+        return { ...c, order: newPos };
+      }));
+    } else {
+      // 다른 그룹으로 이동
+      const toGroupItems = active.filter(c => c.group === toGroup);
+      const overIdx = toGroupItems.findIndex(c => c.id === over.id);
+      const insertAt = overIdx === -1 ? toGroupItems.length : overIdx;
+      // 대상 그룹: 삽입 위치 이후 order +1
+      // 출발 그룹: 그대로 (compaction은 자동으로 안 해도 동작)
+      const newChecklist = checklist.map(c => {
+        if (c.id === a.id) return { ...c, group: toGroup, order: insertAt };
+        if (c.group === toGroup && !c.done && (c.order ?? 0) >= insertAt) {
+          return { ...c, order: (c.order ?? 0) + 1 };
+        }
+        return c;
+      });
+      setChecklist(newChecklist);
+    }
+  };
 
   // 드롭다운에 표시할 모든 그룹
   const allGroupOptions = [...new Set([...DEFAULT_GROUPS, ...checklist.map(c => c.group)])];
@@ -852,11 +1024,15 @@ function PlanTab({ checklist, setChecklist, routines, setRoutines }) {
   };
   const add = () => {
     if (!newItem.trim()) return;
+    const maxOrder = checklist
+      .filter(c => c.group === newGroup && !c.done)
+      .reduce((m, c) => Math.max(m, c.order ?? 0), -1);
     setChecklist([...checklist, {
       id: `todo-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
       text: newItem.trim(),
       done: false,
       group: newGroup,
+      order: maxOrder + 1,
       completedAt: null
     }]);
     setNewItem('');
@@ -908,42 +1084,36 @@ function PlanTab({ checklist, setChecklist, routines, setRoutines }) {
           </div>
         </Card>
       ) : (
-        orderedGroups.map(g => {
-          const items = active.filter(c => c.group === g);
-          if (items.length === 0) return null;
-          return (
-            <div key={g} style={{ marginBottom: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <span className="display-italic" style={{ fontSize: 16, fontWeight: 500, color: '#1F3A2E' }}>
-                  {g}
-                </span>
-                <div style={{ flex: 1, height: 1, background: 'rgba(31,58,46,0.12)' }} />
-                <span style={{ fontSize: 10, color: '#7A8E7E' }}>{items.length}</span>
+        <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
+          {orderedGroups.map(g => {
+            const items = active.filter(c => c.group === g);
+            if (items.length === 0) return null;
+            return (
+              <div key={g} style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span className="display-italic" style={{ fontSize: 16, fontWeight: 500, color: '#1F3A2E' }}>
+                    {g}
+                  </span>
+                  <div style={{ flex: 1, height: 1, background: 'rgba(31,58,46,0.12)' }} />
+                  <span style={{ fontSize: 10, color: '#7A8E7E' }}>{items.length}</span>
+                </div>
+                <Card style={{ padding: 6 }}>
+                  <SortableContext items={items.map(c => c.id)} strategy={verticalListSortingStrategy}>
+                    {items.map((c, i) => (
+                      <SortableTodoItem
+                        key={c.id}
+                        item={c}
+                        isLast={i === items.length - 1}
+                        onToggle={toggle}
+                        onRemove={removeItem}
+                      />
+                    ))}
+                  </SortableContext>
+                </Card>
               </div>
-              <Card style={{ padding: 6 }}>
-                {items.map((c, i) => (
-                  <div key={c.id} style={{
-                    display: 'flex', alignItems: 'center', gap: 12,
-                    padding: '10px 12px',
-                    borderBottom: i < items.length - 1 ? '1px dashed rgba(31,58,46,0.08)' : 'none'
-                  }}>
-                    <button onClick={() => toggle(c.id)} style={{
-                      width: 22, height: 22, borderRadius: 6,
-                      border: '2px solid #1F3A2E',
-                      background: 'transparent',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      cursor: 'pointer', flexShrink: 0
-                    }} />
-                    <span style={{ flex: 1, fontSize: 14 }}>{c.text}</span>
-                    <button onClick={() => removeItem(c.id)} style={iconBtn}>
-                      <X size={14} color="#7A8E7E" />
-                    </button>
-                  </div>
-                ))}
-              </Card>
-            </div>
-          );
-        })
+            );
+          })}
+        </DndContext>
       )}
 
       {/* 추가 폼 */}
