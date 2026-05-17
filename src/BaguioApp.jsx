@@ -16,6 +16,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { initSync, syncStorage, subscribeRemoteChanges } from './lib/syncStorage';
+import { getLinkedEmail, attachEmailToCurrentSession, sendMagicLinkForExistingUser, isAnonymous } from './lib/supabase';
 
 // ============================================================
 //  스토리지 — localStorage + Supabase 동기화 (lib/syncStorage)
@@ -324,6 +325,19 @@ export default function BaguioApp() {
   useEffect(() => { if (loaded) storage.set('baguio:vocab', JSON.stringify(vocab)); }, [vocab, loaded]);
   useEffect(() => { if (loaded) storage.set('baguio:routines', JSON.stringify(routines)); }, [routines, loaded]);
   useEffect(() => { if (loaded) storage.set('baguio:articles', JSON.stringify(articles)); }, [articles, loaded]);
+
+  // 매직 링크 콜백 후 URL 정리 — supabase-js가 토큰을 자동 처리한 뒤 ?code= 또는 #access_token= 가 남아있을 수 있음
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const hasAuth = window.location.search.includes('code=') || window.location.hash.includes('access_token');
+    if (hasAuth) {
+      // 잠깐 기다린 후(라이브러리가 토큰 교환 완료) URL 정리
+      const t = setTimeout(() => {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }, 500);
+      return () => clearTimeout(t);
+    }
+  }, []);
 
   // 다른 기기에서 변경된 내용을 Realtime으로 받아 상태에 반영
   // 주의: storage.set은 자기 자신을 broadcast하지 않으니 echo 걱정 없음
@@ -1829,6 +1843,123 @@ function ScheduleTab({ schedule, setSchedule }) {
 // ============================================================
 //  환율 + 가계부 탭
 // ============================================================
+// ============================================================
+//  기기 간 동기화 섹션 — 매직 링크로 이메일 연결
+// ============================================================
+function SyncSection() {
+  const [email, setEmail] = useState('');
+  const [linkedEmail, setLinkedEmailState] = useState(null);
+  const [anonymous, setAnonymous] = useState(true);
+  const [mode, setMode] = useState('attach'); // attach (이 기기에 이메일 연결) | login (다른 기기에서 받기)
+  const [sending, setSending] = useState(false);
+  const [msg, setMsg] = useState(null); // {type:'ok'|'err', text}
+
+  useEffect(() => {
+    (async () => {
+      const e = await getLinkedEmail();
+      setLinkedEmailState(e);
+      setAnonymous(await isAnonymous());
+    })();
+  }, []);
+
+  const submit = async () => {
+    setMsg(null);
+    setSending(true);
+    const fn = mode === 'attach' ? attachEmailToCurrentSession : sendMagicLinkForExistingUser;
+    const { ok, error } = await fn(email.trim());
+    setSending(false);
+    if (ok) {
+      setMsg({
+        type: 'ok',
+        text: mode === 'attach'
+          ? `${email}로 확인 메일을 보냈습니다. 메일의 링크를 누르면 이 데이터가 그 이메일에 연결됩니다.`
+          : `${email}로 로그인 링크를 보냈습니다. 메일의 링크를 누르면 같은 데이터를 볼 수 있어요.`
+      });
+      setEmail('');
+    } else {
+      setMsg({ type: 'err', text: error || '요청 실패' });
+    }
+  };
+
+  return (
+    <>
+      <SectionTitle kicker="SYNC">기기 간 동기화</SectionTitle>
+      <Card>
+        {linkedEmail ? (
+          <>
+            <div style={{ fontSize: 13, color: '#1F3A2E', marginBottom: 6 }}>
+              <strong>{linkedEmail}</strong> 에 연결됨
+            </div>
+            <div style={{ fontSize: 11, color: '#7A8E7E', lineHeight: 1.5 }}>
+              다른 기기에서 이 이메일로 로그인 링크를 받으면 같은 데이터를 볼 수 있어요.
+              아래에서 "다른 기기에서 받기"로 메일을 보낼 수 있습니다.
+            </div>
+            <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+              <input
+                type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                placeholder={linkedEmail}
+                style={{ ...inputStyle, flex: 1 }}
+              />
+              <button onClick={() => { setMode('login'); submit(); }} disabled={sending || !email} style={primaryBtn}>
+                링크 보내기
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 11, color: '#7A8E7E', lineHeight: 1.5, marginBottom: 12 }}>
+              이메일을 연결하면 다른 기기 (폰·태블릿·다른 노트북) 에서도 같은 데이터를 볼 수 있어요.
+              지금 이 기기에 쌓아둔 데이터는 그대로 유지됩니다.
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              {[
+                { id: 'attach', label: '이 기기에 이메일 연결' },
+                { id: 'login', label: '다른 기기 데이터 받기' },
+              ].map(opt => (
+                <button
+                  key={opt.id}
+                  onClick={() => setMode(opt.id)}
+                  style={{
+                    flex: 1,
+                    padding: '8px 10px',
+                    border: '1px solid ' + (mode === opt.id ? '#1F3A2E' : 'rgba(31,58,46,0.15)'),
+                    borderRadius: 8,
+                    background: mode === opt.id ? '#1F3A2E' : 'transparent',
+                    color: mode === opt.id ? '#F5EFE0' : '#1F3A2E',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >{opt.label}</button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                style={{ ...inputStyle, flex: 1 }}
+              />
+              <button onClick={submit} disabled={sending || !email} style={primaryBtn}>
+                {sending ? '전송 중...' : '메일 보내기'}
+              </button>
+            </div>
+          </>
+        )}
+        {msg && (
+          <div style={{
+            marginTop: 12, padding: '8px 12px', borderRadius: 8, fontSize: 12,
+            background: msg.type === 'ok' ? 'rgba(31,58,46,0.06)' : 'rgba(196,90,63,0.1)',
+            color: msg.type === 'ok' ? '#1F3A2E' : '#C45A3F',
+            lineHeight: 1.5,
+          }}>
+            {msg.text}
+          </div>
+        )}
+      </Card>
+    </>
+  );
+}
+
 function MoneyTab({ phpRate, setPhpRate, rateUpdated, setRateUpdated, expenses, setExpenses, tripStart, setTripStart, tripEnd, setTripEnd }) {
   const [amount, setAmount] = useState('100');
   const [direction, setDirection] = useState('php_to_krw'); // or krw_to_php
@@ -2025,6 +2156,8 @@ function MoneyTab({ phpRate, setPhpRate, rateUpdated, setRateUpdated, expenses, 
           </div>
         </div>
       </Card>
+
+      <SyncSection />
     </>
   );
 }

@@ -157,6 +157,43 @@ export async function initSync() {
     window.addEventListener('focus', refetchAndApply);
   }
 
+  // 인증 상태 변화 감시 — 매직 링크 클릭 후 user_id가 바뀌면 새 user 데이터로 갈아끼우기
+  supabase.auth.onAuthStateChange(async (event, session) => {
+    if (!session) return;
+    const newUserId = session.user.id;
+    if (newUserId === userId) return; // 같은 user면 무시
+    userId = newUserId;
+    // 새 user의 row를 가져와 적용 (없으면 현재 localStorage를 새 user 이름으로 첫 업로드)
+    const { data: row } = await supabase
+      .from('user_data')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (row) {
+      for (const [key, col] of Object.entries(COLUMN_MAP)) {
+        const v = row[col];
+        if (v === null || v === undefined) continue;
+        const serialized = typeof v === 'string' ? v : JSON.stringify(v);
+        localSet(key, serialized);
+        notify(key, serialized);
+      }
+      rowCache = row;
+    } else {
+      // 새 user에 데이터 없음 → 현재 localStorage 통째 업로드
+      const seed = {};
+      for (const [key, col] of Object.entries(COLUMN_MAP)) {
+        const raw = localGet(key);
+        if (raw === null) continue;
+        if (col === 'lang') seed[col] = raw;
+        else { try { seed[col] = JSON.parse(raw); } catch {} }
+      }
+      if (Object.keys(seed).length > 0) {
+        pendingUpserts = seed;
+        await flushUpserts();
+      }
+    }
+  });
+
   return { ok: true, userId };
 }
 
