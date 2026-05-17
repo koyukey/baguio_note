@@ -16,7 +16,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { initSync, syncStorage, subscribeRemoteChanges } from './lib/syncStorage';
-import { getLinkedEmail, attachEmailToCurrentSession, sendMagicLinkForExistingUser, isAnonymous } from './lib/supabase';
+import { getLinkedEmail, attachEmailToCurrentSession, sendOtpCode, verifyOtpCode, isAnonymous } from './lib/supabase';
 
 // ============================================================
 //  스토리지 — localStorage + Supabase 동기화 (lib/syncStorage)
@@ -1848,36 +1848,70 @@ function ScheduleTab({ schedule, setSchedule }) {
 // ============================================================
 function SyncSection() {
   const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
   const [linkedEmail, setLinkedEmailState] = useState(null);
-  const [anonymous, setAnonymous] = useState(true);
-  const [mode, setMode] = useState('attach'); // attach (이 기기에 이메일 연결) | login (다른 기기에서 받기)
-  const [sending, setSending] = useState(false);
-  const [msg, setMsg] = useState(null); // {type:'ok'|'err', text}
+  const [mode, setMode] = useState('attach'); // attach | login
+  const [step, setStep] = useState('email'); // email (요청) | code (코드 입력)
+  const [sentEmail, setSentEmail] = useState(''); // 메일 보낸 이메일 (코드 인증 시 필요)
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
 
   useEffect(() => {
     (async () => {
       const e = await getLinkedEmail();
       setLinkedEmailState(e);
-      setAnonymous(await isAnonymous());
     })();
   }, []);
 
-  const submit = async () => {
+  // 인증 상태가 바뀌면 (예: 코드 인증 성공으로 user swap) UI 갱신
+  useEffect(() => {
+    const id = setInterval(async () => {
+      const e = await getLinkedEmail();
+      if (e !== linkedEmail) setLinkedEmailState(e);
+    }, 2000);
+    return () => clearInterval(id);
+  }, [linkedEmail]);
+
+  const submitEmail = async () => {
     setMsg(null);
-    setSending(true);
-    const fn = mode === 'attach' ? attachEmailToCurrentSession : sendMagicLinkForExistingUser;
+    setBusy(true);
+    const fn = mode === 'attach' ? attachEmailToCurrentSession : sendOtpCode;
     const { ok, error } = await fn(email.trim());
-    setSending(false);
+    setBusy(false);
     if (ok) {
-      setMsg({
-        type: 'ok',
-        text: mode === 'attach'
-          ? `${email}로 확인 메일을 보냈습니다. 메일의 링크를 누르면 이 데이터가 그 이메일에 연결됩니다.`
-          : `${email}로 로그인 링크를 보냈습니다. 메일의 링크를 누르면 같은 데이터를 볼 수 있어요.`
-      });
-      setEmail('');
+      if (mode === 'attach') {
+        setMsg({
+          type: 'ok',
+          text: `${email}로 확인 메일을 보냈습니다. 메일의 링크를 한 번 눌러주세요.`,
+        });
+        setEmail('');
+      } else {
+        // login 모드: 메일이 코드를 담아 옴 → 코드 입력 단계로
+        setSentEmail(email.trim());
+        setStep('code');
+        setMsg({
+          type: 'ok',
+          text: `${email}로 6자리 코드를 보냈습니다. 메일을 확인 후 아래에 입력하세요.`,
+        });
+        setEmail('');
+      }
     } else {
       setMsg({ type: 'err', text: error || '요청 실패' });
+    }
+  };
+
+  const submitCode = async () => {
+    setMsg(null);
+    setBusy(true);
+    const { ok, error } = await verifyOtpCode(sentEmail, code);
+    setBusy(false);
+    if (ok) {
+      setMsg({ type: 'ok', text: '연결되었어요. 데이터를 가져오는 중...' });
+      setCode('');
+      // 잠깐 후 새로고침해서 데이터 확실히 반영
+      setTimeout(() => { if (typeof window !== 'undefined') window.location.reload(); }, 1000);
+    } else {
+      setMsg({ type: 'err', text: error || '코드가 올바르지 않습니다.' });
     }
   };
 
@@ -1890,20 +1924,39 @@ function SyncSection() {
             <div style={{ fontSize: 13, color: '#1F3A2E', marginBottom: 6 }}>
               <strong>{linkedEmail}</strong> 에 연결됨
             </div>
-            <div style={{ fontSize: 11, color: '#7A8E7E', lineHeight: 1.5 }}>
-              다른 기기에서 이 이메일로 로그인 링크를 받으면 같은 데이터를 볼 수 있어요.
-              아래에서 "다른 기기에서 받기"로 메일을 보낼 수 있습니다.
+            <div style={{ fontSize: 11, color: '#7A8E7E', lineHeight: 1.5, marginBottom: 12 }}>
+              다른 기기에서 이 이메일로 인증 코드를 받으면 같은 데이터를 볼 수 있어요.
             </div>
-            <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-              <input
-                type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                placeholder={linkedEmail}
-                style={{ ...inputStyle, flex: 1 }}
-              />
-              <button onClick={() => { setMode('login'); submit(); }} disabled={sending || !email} style={primaryBtn}>
-                링크 보내기
-              </button>
-            </div>
+            {step === 'email' ? (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                  placeholder={linkedEmail}
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+                <button
+                  onClick={() => { setMode('login'); submitEmail(); }}
+                  disabled={busy || !email}
+                  style={primaryBtn}
+                >코드 보내기</button>
+              </div>
+            ) : (
+              <div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type="text" inputMode="numeric" maxLength={6}
+                    value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder="6자리 코드"
+                    style={{ ...inputStyle, flex: 1, fontSize: 18, letterSpacing: '0.4em', textAlign: 'center' }}
+                  />
+                  <button onClick={submitCode} disabled={busy || code.length !== 6} style={primaryBtn}>인증</button>
+                </div>
+                <button
+                  onClick={() => { setStep('email'); setCode(''); setMsg(null); }}
+                  style={{ background: 'none', border: 'none', color: '#7A8E7E', fontSize: 11, marginTop: 8, cursor: 'pointer', padding: 0 }}
+                >← 이메일 다시 입력</button>
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -1918,7 +1971,7 @@ function SyncSection() {
               ].map(opt => (
                 <button
                   key={opt.id}
-                  onClick={() => setMode(opt.id)}
+                  onClick={() => { setMode(opt.id); setStep('email'); setMsg(null); }}
                   style={{
                     flex: 1,
                     padding: '8px 10px',
@@ -1933,16 +1986,35 @@ function SyncSection() {
                 >{opt.label}</button>
               ))}
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input
-                type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                style={{ ...inputStyle, flex: 1 }}
-              />
-              <button onClick={submit} disabled={sending || !email} style={primaryBtn}>
-                {sending ? '전송 중...' : '메일 보내기'}
-              </button>
-            </div>
+            {step === 'email' ? (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+                <button onClick={submitEmail} disabled={busy || !email} style={primaryBtn}>
+                  {busy ? '전송 중...' : (mode === 'attach' ? '메일 보내기' : '코드 보내기')}
+                </button>
+              </div>
+            ) : (
+              // login 모드 + 코드 입력 단계
+              <div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type="text" inputMode="numeric" maxLength={6}
+                    value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder="6자리 코드"
+                    style={{ ...inputStyle, flex: 1, fontSize: 18, letterSpacing: '0.4em', textAlign: 'center' }}
+                  />
+                  <button onClick={submitCode} disabled={busy || code.length !== 6} style={primaryBtn}>인증</button>
+                </div>
+                <button
+                  onClick={() => { setStep('email'); setCode(''); setMsg(null); }}
+                  style={{ background: 'none', border: 'none', color: '#7A8E7E', fontSize: 11, marginTop: 8, cursor: 'pointer', padding: 0 }}
+                >← 이메일 다시 입력</button>
+              </div>
+            )}
           </>
         )}
         {msg && (

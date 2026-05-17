@@ -60,19 +60,35 @@ export async function attachEmailToCurrentSession(email) {
   return { ok: true };
 }
 
-// 다른 기기 — 매직 링크 받아 기존 user로 로그인.
-// shouldCreateUser:false로 두면 등록된 이메일에만 메일을 보냄 (오타 시 새 user 생성 방지).
-export async function sendMagicLinkForExistingUser(email) {
+// 다른 기기 — OTP 6자리 코드 발송 (매직 링크 대신).
+// 클릭 의존 X, cross-tab 격리 문제 없음. 이메일에 6자리 숫자가 옴.
+export async function sendOtpCode(email) {
   if (!supabase) return { ok: false, error: 'Supabase not configured' };
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return { ok: false, error: '이메일 형식이 올바르지 않습니다.' };
   }
+  // shouldCreateUser:false → 등록된 이메일에만 보냄 (오타 시 새 user 생성 방지)
+  // emailRedirectTo 생략 → Supabase가 매직 링크 대신 6자리 코드만 보냄
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: {
-      emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
-      shouldCreateUser: false,
-    },
+    options: { shouldCreateUser: false },
+  });
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
+// 받은 6자리 코드로 실제 로그인 (세션 발급)
+export async function verifyOtpCode(email, code) {
+  if (!supabase) return { ok: false, error: 'Supabase not configured' };
+  if (!code || !/^\d{6}$/.test(code.trim())) {
+    return { ok: false, error: '6자리 숫자 코드를 입력하세요.' };
+  }
+  const { error } = await supabase.auth.verifyOtp({
+    email,
+    token: code.trim(),
+    type: 'email',
   });
   if (error) {
     return { ok: false, error: error.message };
