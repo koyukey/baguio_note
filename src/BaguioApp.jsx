@@ -16,6 +16,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { initSync, syncStorage, subscribeRemoteChanges, refreshNow } from './lib/syncStorage';
+import PullToRefresh from 'pulltorefreshjs';
 import { getLinkedEmail, attachEmailToCurrentSession, sendOtpCode, verifyOtpCode, isAnonymous } from './lib/supabase';
 
 // ============================================================
@@ -361,6 +362,25 @@ export default function BaguioApp() {
   useEffect(() => { if (loaded) storage.set('baguio:vocab', JSON.stringify(vocab)); }, [vocab, loaded]);
   useEffect(() => { if (loaded) storage.set('baguio:routines', JSON.stringify(routines)); }, [routines, loaded]);
   useEffect(() => { if (loaded) storage.set('baguio:articles', JSON.stringify(articles)); }, [articles, loaded]);
+
+  // Pull-to-Refresh — 화면 위에서 아래로 당겨서 새로고침
+  // (PWA에서 브라우저 기본 P2R가 비활성화되므로 직접 구현)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const instance = PullToRefresh.init({
+      mainElement: 'body',
+      instructionsPullToRefresh: lang === 'ko' ? '당겨서 새로고침' : 'Pull to refresh',
+      instructionsReleaseToRefresh: lang === 'ko' ? '놓으면 새로고침' : 'Release to refresh',
+      instructionsRefreshing: lang === 'ko' ? '새로고침 중...' : 'Refreshing...',
+      distThreshold: 70,
+      distMax: 120,
+      resistanceFunction: (t) => Math.min(1, t / 2.5),
+      onRefresh: async () => {
+        await refreshNow();
+      },
+    });
+    return () => { try { instance.destroy(); } catch {} };
+  }, [lang]);
 
   // 매직 링크 콜백 후 URL 정리 — supabase-js가 토큰을 자동 처리한 뒤 ?code= 또는 #access_token= 가 남아있을 수 있음
   useEffect(() => {
