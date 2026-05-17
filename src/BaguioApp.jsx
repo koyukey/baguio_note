@@ -15,7 +15,7 @@ import {
   useSortable, verticalListSortingStrategy
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { initSync, syncStorage, subscribeRemoteChanges } from './lib/syncStorage';
+import { initSync, syncStorage, subscribeRemoteChanges, refreshNow } from './lib/syncStorage';
 import { getLinkedEmail, attachEmailToCurrentSession, sendOtpCode, verifyOtpCode, isAnonymous } from './lib/supabase';
 
 // ============================================================
@@ -227,6 +227,42 @@ function getDayAchievement(dateKey, checklist, routines) {
 }
 
 // ============================================================
+//  새로고침 버튼 — PWA 모드에서도 수동으로 원격 데이터 가져오기
+// ============================================================
+function RefreshButton({ lang }) {
+  const [spinning, setSpinning] = useState(false);
+  const handle = async () => {
+    setSpinning(true);
+    try { await refreshNow(); } catch {}
+    // 최소 600ms 회전 (피드백)
+    setTimeout(() => setSpinning(false), 600);
+  };
+  return (
+    <button
+      onClick={handle}
+      aria-label={lang === 'ko' ? '새로고침' : 'Refresh'}
+      title={lang === 'ko' ? '동기화' : 'Sync'}
+      style={{
+        width: 28, height: 28,
+        border: '1px solid rgba(31,58,46,0.25)',
+        borderRadius: '50%',
+        background: 'transparent',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#1F3A2E',
+        padding: 0,
+      }}
+    >
+      <RefreshCw size={14} style={{
+        animation: spinning ? 'spin 0.6s linear' : 'none',
+      }} />
+    </button>
+  );
+}
+
+// ============================================================
 //  메인 컴포넌트
 // ============================================================
 export default function BaguioApp() {
@@ -425,6 +461,7 @@ export default function BaguioApp() {
         .fade-up { animation: fadeUp 0.6s ease-out both; }
         @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .grain::before {
           content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 100;
           background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E");
@@ -456,31 +493,34 @@ export default function BaguioApp() {
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-            {/* KO / EN 토글 */}
-            <div style={{
-              display: 'inline-flex',
-              border: '1px solid rgba(31,58,46,0.25)',
-              borderRadius: 999,
-              overflow: 'hidden',
-              fontSize: 10,
-              fontWeight: 700,
-              letterSpacing: '0.1em'
-            }}>
-              {['ko', 'en'].map(l => (
-                <button
-                  key={l}
-                  onClick={() => setLang(l)}
-                  aria-pressed={lang === l}
-                  style={{
-                    padding: '4px 10px',
-                    border: 'none',
-                    cursor: 'pointer',
-                    background: lang === l ? '#1F3A2E' : 'transparent',
-                    color: lang === l ? '#F5EFE0' : '#1F3A2E',
-                    transition: 'background 0.15s'
-                  }}
-                >{l.toUpperCase()}</button>
-              ))}
+            {/* 새로고침 + KO/EN 토글 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <RefreshButton lang={lang} />
+              <div style={{
+                display: 'inline-flex',
+                border: '1px solid rgba(31,58,46,0.25)',
+                borderRadius: 999,
+                overflow: 'hidden',
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: '0.1em'
+              }}>
+                {['ko', 'en'].map(l => (
+                  <button
+                    key={l}
+                    onClick={() => setLang(l)}
+                    aria-pressed={lang === l}
+                    style={{
+                      padding: '4px 10px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: lang === l ? '#1F3A2E' : 'transparent',
+                      color: lang === l ? '#F5EFE0' : '#1F3A2E',
+                      transition: 'background 0.15s'
+                    }}
+                  >{l.toUpperCase()}</button>
+                ))}
+              </div>
             </div>
             {/* 상태 카드: Day N 크게 + 그 밑에 날짜 */}
             <div style={{

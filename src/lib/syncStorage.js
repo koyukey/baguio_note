@@ -17,6 +17,7 @@ let rowCache = null;
 let userId = null;
 let pendingUpserts = {};
 let upsertTimer = null;
+let manualRefetch = null; // initSync에서 할당, refreshNow()에서 호출
 const subscribers = new Set(); // 다른 기기에서 변경 알림 받을 콜백들
 
 function localGet(key) {
@@ -155,7 +156,16 @@ export async function initSync() {
     });
     // 윈도우 포커스 (다른 앱에서 돌아옴)
     window.addEventListener('focus', refetchAndApply);
+    // 폴링: 화면이 보이는 동안만 30초마다 (PWA에서도 안정적 동기화)
+    setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        refetchAndApply();
+      }
+    }, 30000);
   }
+
+  // 수동 새로고침 트리거 — 새로고침 버튼에서 호출
+  manualRefetch = refetchAndApply;
 
   // 인증 상태 변화 감시 — 매직 링크 클릭 후 user_id가 바뀌면 새 user 데이터로 갈아끼우기
   supabase.auth.onAuthStateChange(async (event, session) => {
@@ -195,6 +205,11 @@ export async function initSync() {
   });
 
   return { ok: true, userId };
+}
+
+// 수동 새로고침 — 새로고침 버튼 클릭 시 호출
+export async function refreshNow() {
+  if (manualRefetch) await manualRefetch();
 }
 
 // 외부 인터페이스 — 기존 storage.get/set과 호환
