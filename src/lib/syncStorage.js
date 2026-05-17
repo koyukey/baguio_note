@@ -12,6 +12,8 @@ const COLUMN_MAP = {
   'baguio:articles': 'articles',
   'baguio:diaries': 'diaries',
 };
+// 시드 플래그 등 메타 키 — localStorage에만 저장하고 Supabase에는 안 올림
+const LOCAL_ONLY_KEYS = new Set(['baguio:seeded:diary-v1']);
 
 // 메모리 캐시 — 한 row를 통째로 들고 있다가 부분 업데이트 시 합쳐서 upsert
 let rowCache = null;
@@ -234,6 +236,7 @@ export const syncStorage = {
   },
   async set(key, value) {
     localSet(key, value);
+    if (LOCAL_ONLY_KEYS.has(key)) return; // 시드 플래그 등은 클라우드 동기화 제외
     const col = COLUMN_MAP[key];
     if (!col || !supabase || !userId) return;
     // lang은 plain text, 나머지는 JSON 파싱해서 jsonb로 저장

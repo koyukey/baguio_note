@@ -126,6 +126,75 @@ const STARTER_ROUTINES = [
 ];
 
 // ============================================================
+//  데이터: 샘플 일기 — 사용자의 실제 5/17 도착 일기
+// ============================================================
+const STARTER_DIARIES = [
+  {
+    id: 'diary-seed-1',
+    date: '2026-05-17',
+    title: '바기오에 도착하다',
+    paragraphs: [
+      {
+        ko: '어제 5월16일 밤 9시 비행기를 타고, 클락공항에 새벽 12시가 넘어 도착했다. 새벽 1시30분에 셔틀을 타고 Monol 어학원에 도착했을때는 새벽 4시쯤이었다.',
+        en: 'I took a 9 PM flight on May 16th and arrived at Clark Airport past midnight. I got on a shuttle at 1:30 AM and finally made it to Monol Language Academy around 4 AM.',
+      },
+      {
+        ko: '오면서 참 많은 생각들이 들었다. 여기에 온 내 또래 어른들은 뭐하는 사람들일까? 무슨 생각과 어떤 사정때문에 이곳에 왔을까? 나도 그들이 보기에 궁금하겠지?',
+        en: "So many thoughts crossed my mind on the way here. I wonder what the other adults my age do for a living. What's going through their heads, and what circumstances brought them here? I bet they're curious about me too.",
+      },
+      {
+        ko: '산 깊은 곳에 위치하는 이곳은 날씨가 선선해서 좋다. 1인실이라는 숙소는 한국의 고시원 시설보다 후지지만, 한달동안 내가 살 곳이니 적응해야겠지.',
+        en: "This place is tucked deep in the mountains, and the cool weather is nice. My single room is even more run-down than a gosiwon back in Korea, but it's going to be my home for a month, so I'll just have to get used to it.",
+      },
+      {
+        ko: '첫 아침에 너무 배가 고파서 식당에 와서 밥을 먹었는데, 가격이 7600원 치고 형편없었다. 이 돈을 내고 계속 밥을 먹을 수는 없다. 아껴야 한다.',
+        en: "I was starving on my first morning, so I went to the cafeteria and had a meal — but the food was a total rip-off for 7,600 won. I can't keep paying this much for food like that. I need to watch my spending.",
+      },
+      {
+        ko: '오늘은 일요일이라 수업도 없고 아무것도 없는 평온한 하루다. 오늘 한달동안 잡을 루틴과 계획을 세울 생각이다. 이번 한달동안 내가 꼭 가지고 가야하는건 영어다. 영어의 일상화. 스피킹, 리스닝을 중점적으로 연습하고 활용할거다.',
+        en: "Today is Sunday — no classes, nothing going on. Just a calm day. I'm going to map out my routine and plan for the month ahead. The one thing I absolutely need to take away from this month is English. Living and breathing English. I'm going to focus on speaking and listening.",
+      },
+    ],
+    vocabulary: [
+      { word: 'circumstances', meaning: '상황, 사정', example: 'What circumstances brought them here?' },
+      { word: 'tucked', meaning: '(깊숙이) 자리잡은', example: 'The school is tucked deep in the mountains.' },
+      { word: 'starving', meaning: '배가 너무 고픈 (hungry보다 강한 표현)', example: 'I was starving on my first morning.' },
+      { word: 'cafeteria', meaning: '구내식당', example: 'I went to the cafeteria and had a meal.' },
+      { word: 'terrible', meaning: '형편없는, 끔찍한', example: 'The food was terrible.' },
+      { word: 'watch my spending', meaning: '지출을 조심하다', example: 'I need to watch my spending.' },
+      { word: 'run-down', meaning: '낡고 허름한, 후진', example: 'The building looks pretty run-down.' },
+      { word: 'rip-off', meaning: '바가지, 돈값 못하는 것', example: 'That meal was a total rip-off.' },
+    ],
+    phrasal_verbs: [],
+    expressions: [
+      { expression: 'made it to ~', meaning: '~에 (겨우/드디어) 도착하다', note: '"arrived"보다 고생 끝에 도착한 느낌' },
+      { expression: 'crossed my mind', meaning: '머리를 스치다, 문득 떠오르다', note: '"I thought about it"보다 자연스러운 표현' },
+      { expression: 'do for a living', meaning: '직업이 뭐야 (생계로 뭘 해?)', note: 'What do you do for a living?' },
+      { expression: 'get used to it', meaning: '적응하다', note: '원어민이 일상에서 매우 자주 씀' },
+      { expression: 'take away from ~', meaning: '~에서 얻어가다, 가져가다', note: '경험에서 무언가를 배워간다는 뉘앙스' },
+      { expression: 'map out', meaning: '계획을 짜다, 구상하다', note: 'I need to map out my schedule for the week.' },
+      { expression: 'living and breathing ~', meaning: '~에 푹 빠져 살다, 일상화하다', note: '"part of my daily life"보다 몰입감 강한 표현' },
+    ],
+    raw: '',
+    createdAt: '2026-05-17T00:00:00.000Z',
+  },
+];
+
+// 샘플 일기에서 추출된 Phrases (단어장에도 시드)
+const STARTER_DIARY_PHRASES = (() => {
+  const out = [];
+  const d = STARTER_DIARIES[0];
+  for (const v of d.vocabulary) {
+    out.push({ en: v.word, ko: v.meaning, cat: '단어', example: v.example, fromDiaryId: d.id });
+  }
+  for (const e of d.expressions) {
+    const ko = e.note ? `${e.meaning} (${e.note})` : e.meaning;
+    out.push({ en: e.expression, ko, cat: '표현', example: '', fromDiaryId: d.id });
+  }
+  return out;
+})();
+
+// ============================================================
 //  루틴 헬퍼 함수
 // ============================================================
 function getDateKey(d) {
@@ -286,10 +355,10 @@ export default function BaguioApp() {
   const [checklist, setChecklist] = useState(STARTER_CHECKLIST);
   const [schedule, setSchedule] = useState(STARTER_SCHEDULE);
   const [expenses, setExpenses] = useState([]);
-  const [vocab, setVocab] = useState(STARTER_PHRASES);
+  const [vocab, setVocab] = useState([...STARTER_DIARY_PHRASES, ...STARTER_PHRASES]);
   const [routines, setRoutines] = useState(STARTER_ROUTINES);
   const [articles, setArticles] = useState([]);
-  const [diaries, setDiaries] = useState([]);
+  const [diaries, setDiaries] = useState(STARTER_DIARIES);
 
   // 첫 로드 시 Supabase 동기화 → 저장된 데이터 불러오기
   useEffect(() => {
@@ -351,7 +420,29 @@ export default function BaguioApp() {
       const ar = await storage.get('baguio:articles');
       if (ar) { try { setArticles(JSON.parse(ar)); } catch {} }
       const dr = await storage.get('baguio:diaries');
-      if (dr) { try { setDiaries(JSON.parse(dr)); } catch {} }
+      let loadedDiaries = STARTER_DIARIES;
+      if (dr) {
+        try { loadedDiaries = JSON.parse(dr); } catch {}
+      }
+
+      // 샘플 일기 일회성 시드: seedFlag 없으면 기존 일기에 샘플이 없을 때만 추가
+      const seedFlag = await storage.get('baguio:seeded:diary-v1');
+      if (!seedFlag) {
+        const hasSample = loadedDiaries.some(d => d.id === 'diary-seed-1');
+        if (!hasSample) {
+          loadedDiaries = [...STARTER_DIARIES, ...loadedDiaries];
+        }
+        // vocab도 같은 방식: 샘플 단어가 이미 있는지 en 기준으로 확인 후 보강
+        // (위의 setVocab은 이미 로드된 c 결과를 갖고 있으므로 함수형 업데이트)
+        setVocab(prev => {
+          const existing = new Set(prev.map(v => v.en));
+          const fresh = STARTER_DIARY_PHRASES.filter(p => !existing.has(p.en));
+          return fresh.length > 0 ? [...fresh, ...prev] : prev;
+        });
+        await storage.set('baguio:seeded:diary-v1', '1');
+      }
+      setDiaries(loadedDiaries);
+
       setLoaded(true);
     })();
   }, []);
