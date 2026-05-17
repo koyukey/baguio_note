@@ -235,8 +235,8 @@ export default function BaguioApp() {
   // 언어 (ko | en)
   const [lang, setLang] = useState('ko');
 
-  // 여행 정보
-  const [tripStart, setTripStart] = useState('2026-05-16');
+  // 여행 정보 (5/16 도착 → 5/17 수업 시작)
+  const [tripStart, setTripStart] = useState('2026-05-17');
   const [tripEnd, setTripEnd] = useState('2026-06-13');
 
   // 환율
@@ -261,7 +261,17 @@ export default function BaguioApp() {
       if (lg === 'ko' || lg === 'en') setLang(lg);
       const t = await storage.get('baguio:trip');
       if (t) {
-        try { const p = JSON.parse(t); setTripStart(p.start || tripStart); setTripEnd(p.end || tripEnd); } catch {}
+        try {
+          const p = JSON.parse(t);
+          // 마이그레이션: 도착일(5/16)을 시작일로 잡았던 옛 데이터 → 수업 시작일(5/17)로
+          const migratedStart = p.start === '2026-05-16' ? '2026-05-17' : (p.start || tripStart);
+          setTripStart(migratedStart);
+          setTripEnd(p.end || tripEnd);
+          if (p.start === '2026-05-16') {
+            // 새 값으로 즉시 저장 (Supabase에도 반영)
+            await storage.set('baguio:trip', JSON.stringify({ start: migratedStart, end: p.end || tripEnd }));
+          }
+        } catch {}
       }
       const r = await storage.get('baguio:rate');
       if (r) {
@@ -364,10 +374,11 @@ export default function BaguioApp() {
   const totalWeeks = Math.max(1, Math.round(totalDays / 7));
   const weekNum = daysIn >= 1 ? Math.min(totalWeeks, Math.ceil(daysIn / 7)) : 0;
   const todayMonthDay = `${today.getMonth()+1}/${today.getDate()}`;
+  // status: 시작 전엔 D-N, 시작 후엔 Day N을 메인으로 강조하고 날짜는 sub로
   const status = dDay > 0
     ? { label: `D-${dDay}`, sub: lang === 'ko' ? '출국까지' : 'until departure' }
     : daysIn >= 1 && daysIn <= totalDays
-    ? { label: todayMonthDay, sub: `Day ${daysIn} / ${totalDays}` }
+    ? { label: `Day ${daysIn}`, sub: todayMonthDay }
     : { label: lang === 'ko' ? '종료' : 'completed', sub: lang === 'ko' ? '수고했어요' : 'well done' };
 
   const totalSpentPhp = expenses.reduce((s, e) => s + (e.currency === 'PHP' ? Number(e.amount) : Number(e.amount) / phpRate), 0);
@@ -450,18 +461,19 @@ export default function BaguioApp() {
                 >{l.toUpperCase()}</button>
               ))}
             </div>
-            {/* 상태 카드: 날짜 + Day N */}
+            {/* 상태 카드: Day N 크게 + 그 밑에 날짜 */}
             <div style={{
               border: '1px solid rgba(31,58,46,0.2)',
               borderRadius: 8,
-              padding: '6px 12px',
-              textAlign: 'right',
-              background: 'rgba(255,255,255,0.35)'
+              padding: '8px 14px',
+              textAlign: 'center',
+              background: 'rgba(255,255,255,0.4)',
+              minWidth: 76
             }}>
-              <div className="display" style={{ fontSize: '18px', fontWeight: 700, color: '#1F3A2E', lineHeight: 1.1 }}>
+              <div className="display" style={{ fontSize: '24px', fontWeight: 700, color: '#C45A3F', lineHeight: 1, letterSpacing: '-0.01em' }}>
                 {status.label}
               </div>
-              <div style={{ fontSize: '10px', color: '#5C6F62', letterSpacing: '0.05em', marginTop: 2 }}>{status.sub}</div>
+              <div style={{ fontSize: '11px', color: '#5C6F62', letterSpacing: '0.05em', marginTop: 4, fontWeight: 500 }}>{status.sub}</div>
             </div>
           </div>
         </div>
