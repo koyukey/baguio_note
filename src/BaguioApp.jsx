@@ -2443,10 +2443,22 @@ function MoneyTab({ lang = 'ko', phpRate, setPhpRate, rateUpdated, setRateUpdate
 // ============================================================
 //  Diary 섹션 — 한·영 일기 목록 + 마크다운 붙여넣기 + 상세 보기
 // ============================================================
-function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary }) {
+function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpenId, onPendingOpenConsumed }) {
   const t = (ko, en) => lang === 'ko' ? ko : en;
   const [view, setView] = useState('list'); // list | add | detail
   const [openId, setOpenId] = useState(null);
+
+  // 외부에서 "이 일기 열어"라는 신호가 오면 자동으로 detail view로
+  useEffect(() => {
+    if (pendingOpenId) {
+      // 해당 일기가 실제로 있을 때만 점프
+      if (diaries.some(d => d.id === pendingOpenId)) {
+        setOpenId(pendingOpenId);
+        setView('detail');
+      }
+      onPendingOpenConsumed && onPendingOpenConsumed();
+    }
+  }, [pendingOpenId, diaries, onPendingOpenConsumed]);
   // 추가 모달 상태
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [raw, setRaw] = useState('');
@@ -2727,6 +2739,13 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
   const t = (ko, en) => lang === 'ko' ? ko : en;
   const [section, setSection] = useState('phrases'); // phrases | writing | diary
   const [showLearned, setShowLearned] = useState(false); // Phrases: 외운 것 보기 토글
+  const [pendingDiaryOpen, setPendingDiaryOpen] = useState(null); // 일기로 점프 신호
+
+  // 단어 카드 → 일기 상세로 점프
+  const jumpToDiary = (diaryId) => {
+    setPendingDiaryOpen(diaryId);
+    setSection('diary');
+  };
 
   // 표현 (phrases) 상태
   const [cat, setCat] = useState('전체');
@@ -2966,6 +2985,18 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
                           </div>
                         )}
                       </div>
+                      {v.fromDiaryId && diaries.some(d => d.id === v.fromDiaryId) && (
+                        <button
+                          onClick={() => jumpToDiary(v.fromDiaryId)}
+                          title={t('출처 일기 보기', 'View source diary')}
+                          style={{
+                            background: 'transparent', border: 'none', padding: 4,
+                            cursor: 'pointer', flexShrink: 0,
+                            color: '#7A8E7E',
+                            display: 'flex', alignItems: 'center',
+                          }}
+                        ><BookOpen size={14} /></button>
+                      )}
                       <button
                         onClick={() => toggleLearned(v.en)}
                         title={learned ? t('외움 해제', 'Mark unlearned') : t('외움', 'Mark learned')}
@@ -3114,6 +3145,8 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
           diaries={diaries}
           saveDiary={saveDiary}
           deleteDiary={deleteDiary}
+          pendingOpenId={pendingDiaryOpen}
+          onPendingOpenConsumed={() => setPendingDiaryOpen(null)}
         />
       )}
     </>
