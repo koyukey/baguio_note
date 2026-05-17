@@ -1,9 +1,25 @@
 import { createClient } from '@supabase/supabase-js';
+import localforage from 'localforage';
 
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_KEY;
 
 export const isSupabaseConfigured = !!(url && key);
+
+// IndexedDB 기반 storage — iOS Safari의 ITP가 localStorage보다 덜 비움
+localforage.config({
+  name: 'baguio-note',
+  storeName: 'auth',
+  description: 'Supabase auth session storage',
+});
+
+// Supabase auth가 요구하는 API: getItem/setItem/removeItem (sync 또는 promise OK)
+// localforage는 promise 기반이고 supabase-js가 이를 await하므로 그대로 사용 가능.
+const idbStorage = {
+  getItem: (k) => localforage.getItem(k),
+  setItem: (k, v) => localforage.setItem(k, v),
+  removeItem: (k) => localforage.removeItem(k),
+};
 
 export const supabase = isSupabaseConfigured
   ? createClient(url, key, {
@@ -13,6 +29,7 @@ export const supabase = isSupabaseConfigured
         detectSessionInUrl: true,   // 매직 링크 콜백에서 URL hash 토큰 자동 처리
         flowType: 'pkce',
         storageKey: 'baguio-auth',
+        storage: idbStorage,
       },
     })
   : null;
@@ -40,16 +57,26 @@ export async function getLinkedEmail() {
   return user.email && !user.is_anonymous ? user.email : null;
 }
 
+// 마지막에 연결됐던 이메일 기억 — 세션이 풀려도 재인증 시 자동 입력
+const REMEMBERED_EMAIL_KEY = 'baguio:remembered-email';
+export function rememberEmail(email) {
+  try { window.localStorage.setItem(REMEMBERED_EMAIL_KEY, email); } catch {}
+}
+export function getRememberedEmail() {
+  try { return window.localStorage.getItem(REMEMBERED_EMAIL_KEY); } catch { return null; }
+}
+
 // 이 기기 (첫 기기) — 익명 세션에 이메일 연결.
 // 익명 데이터를 보존하면서 이메일을 attach한다.
 // updateUser({ email })가 confirm email 메일을 보내며, 클릭 시 익명 user에 이메일이 영구 결합.
 export async function attachEmailToCurrentSession(email) {
   if (!supabase) return { ok: false, error: 'Supabase not configured' };
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  const clean = (email || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
     return { ok: false, error: '이메일 형식이 올바르지 않습니다.' };
   }
   const { error } = await supabase.auth.updateUser(
-    { email },
+    { email: clean },
     {
       emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
     }
@@ -57,6 +84,7 @@ export async function attachEmailToCurrentSession(email) {
   if (error) {
     return { ok: false, error: error.message };
   }
+  rememberEmail(clean); // 풀려도 다음에 자동 입력
   return { ok: true };
 }
 
@@ -64,18 +92,18 @@ export async function attachEmailToCurrentSession(email) {
 // 클릭 의존 X, cross-tab 격리 문제 없음. 이메일에 6자리 숫자가 옴.
 export async function sendOtpCode(email) {
   if (!supabase) return { ok: false, error: 'Supabase not configured' };
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  const clean = (email || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
     return { ok: false, error: '이메일 형식이 올바르지 않습니다.' };
   }
-  // shouldCreateUser:false → 등록된 이메일에만 보냄 (오타 시 새 user 생성 방지)
-  // emailRedirectTo 생략 → Supabase가 매직 링크 대신 6자리 코드만 보냄
   const { error } = await supabase.auth.signInWithOtp({
-    email,
+    email: clean,
     options: { shouldCreateUser: false },
   });
   if (error) {
     return { ok: false, error: error.message };
   }
+  rememberEmail(clean);
   return { ok: true };
 }
 
@@ -94,6 +122,7 @@ export async function verifyOtpCode(email, code) {
   if (error) {
     return { ok: false, error: error.message };
   }
+  rememberEmail(email);
   return { ok: true };
 }
 

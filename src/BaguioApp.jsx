@@ -17,7 +17,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { initSync, syncStorage, subscribeRemoteChanges, refreshNow } from './lib/syncStorage';
 import PullToRefresh from 'pulltorefreshjs';
-import { getLinkedEmail, attachEmailToCurrentSession, sendOtpCode, verifyOtpCode, isAnonymous } from './lib/supabase';
+import { getLinkedEmail, attachEmailToCurrentSession, sendOtpCode, verifyOtpCode, isAnonymous, getRememberedEmail } from './lib/supabase';
 
 // ============================================================
 //  스토리지 — localStorage + Supabase 동기화 (lib/syncStorage)
@@ -1938,12 +1938,15 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
 // ============================================================
 function SyncSection({ lang = 'ko' }) {
   const t = (ko, en) => lang === 'ko' ? ko : en;
-  const [email, setEmail] = useState('');
+  const remembered = getRememberedEmail() || '';
+  const [email, setEmail] = useState(remembered);
   const [code, setCode] = useState('');
   const [linkedEmail, setLinkedEmailState] = useState(null);
-  const [mode, setMode] = useState('attach'); // attach | login
-  const [step, setStep] = useState('email'); // email (요청) | code (코드 입력)
-  const [sentEmail, setSentEmail] = useState(''); // 메일 보낸 이메일 (코드 인증 시 필요)
+  // 풀린 적 있음을 감지 (연결됐다가 안 됨)
+  const wasLinked = !!remembered;
+  const [mode, setMode] = useState(wasLinked ? 'login' : 'attach'); // attach | login
+  const [step, setStep] = useState('email');
+  const [sentEmail, setSentEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
@@ -2052,10 +2055,21 @@ function SyncSection({ lang = 'ko' }) {
           </>
         ) : (
           <>
-            <div style={{ fontSize: 11, color: '#7A8E7E', lineHeight: 1.5, marginBottom: 12 }}>
-              {t('이메일을 연결하면 다른 기기 (폰·태블릿·다른 노트북) 에서도 같은 데이터를 볼 수 있어요. 지금 이 기기에 쌓아둔 데이터는 그대로 유지됩니다.',
-                  'Link an email to see the same data on other devices (phone, tablet, another laptop). Your current data on this device stays.')}
-            </div>
+            {wasLinked ? (
+              <div style={{
+                fontSize: 12, lineHeight: 1.5, marginBottom: 12,
+                padding: '10px 12px', borderRadius: 8,
+                background: 'rgba(196,90,63,0.08)', color: '#C45A3F',
+              }}>
+                {t(`세션이 끊겼어요. ${remembered} 로 코드를 받아 다시 연결해주세요.`,
+                    `Session expired. Re-link with ${remembered} by requesting a new code.`)}
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: '#7A8E7E', lineHeight: 1.5, marginBottom: 12 }}>
+                {t('이메일을 연결하면 다른 기기 (폰·태블릿·다른 노트북) 에서도 같은 데이터를 볼 수 있어요. 지금 이 기기에 쌓아둔 데이터는 그대로 유지됩니다.',
+                    'Link an email to see the same data on other devices (phone, tablet, another laptop). Your current data on this device stays.')}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
               {[
                 { id: 'attach', label: t('이 기기에 이메일 연결', 'Link email here') },
