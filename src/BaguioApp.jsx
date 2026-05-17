@@ -362,13 +362,20 @@ export default function BaguioApp() {
     return unsub;
   }, [loaded]);
 
-  // D-day 계산
-  const today = new Date(); today.setHours(0,0,0,0);
-  const start = new Date(tripStart);
-  const end = new Date(tripEnd);
-  const dDay = Math.ceil((start - today) / (1000*60*60*24));
-  const totalDays = Math.floor((end - start) / (1000*60*60*24)) + 1; // inclusive day count
-  const daysIn = Math.floor((today - start) / (1000*60*60*24)) + 1; // 시작일이 Day 1
+  // D-day 계산 (로컬 시간 기준 자정 정렬 — timezone 영향 제거)
+  // 'YYYY-MM-DD' 문자열을 그냥 new Date()에 넣으면 UTC 자정으로 파싱돼서
+  // KST 환경에선 종일 어긋남. 수동으로 로컬 자정 Date 생성.
+  const parseLocalDate = (s) => {
+    const [y, m, d] = s.split('-').map(Number);
+    return new Date(y, m - 1, d); // 로컬 자정
+  };
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const start = parseLocalDate(tripStart);
+  const end = parseLocalDate(tripEnd);
+  const MS_PER_DAY = 1000 * 60 * 60 * 24;
+  const dDay = Math.round((start - today) / MS_PER_DAY);
+  const totalDays = Math.round((end - start) / MS_PER_DAY) + 1; // inclusive
+  const daysIn = Math.round((today - start) / MS_PER_DAY) + 1; // 시작일이 Day 1
   // 주차: 5/16(토) 시작 → 5/16~5/22 = 1주차, 5/23~5/29 = 2주차 ... 6/13(토)은 5주차 첫날
   // 단, 코스가 정확히 4주(28일)면 4, 그 이상이면 자연 ceil
   const totalWeeks = Math.max(1, Math.round(totalDays / 7));
