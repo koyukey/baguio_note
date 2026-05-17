@@ -38,17 +38,31 @@ function localSet(key, value) {
 }
 
 async function flushUpserts() {
-  if (!supabase || !userId) return;
+  if (!supabase) return;
+  // 항상 현재 활성 세션의 user_id를 사용 (auth swap 후에도 정확)
+  const { data: { user } } = await supabase.auth.getUser();
+  const activeUserId = user?.id || userId;
+  if (!activeUserId) return;
+  userId = activeUserId; // 캐시도 갱신
+
   const updates = pendingUpserts;
   pendingUpserts = {};
   upsertTimer = null;
   if (Object.keys(updates).length === 0) return;
-  const payload = { user_id: userId, ...updates };
-  const { error } = await supabase
+  const payload = { user_id: activeUserId, ...updates };
+  const { error, data } = await supabase
     .from('user_data')
-    .upsert(payload, { onConflict: 'user_id' });
+    .upsert(payload, { onConflict: 'user_id' })
+    .select();
   if (error) {
-    console.warn('[sync] upsert failed', error.message);
+    console.warn('[sync] upsert failed', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      user_id: activeUserId,
+      keys: Object.keys(updates),
+    });
     // 실패한 변경은 다음 flush에 재시도되도록 다시 큐에 넣기
     pendingUpserts = { ...updates, ...pendingUpserts };
     if (!upsertTimer) upsertTimer = setTimeout(flushUpserts, 5000);
