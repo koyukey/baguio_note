@@ -1053,69 +1053,21 @@ function DashboardTab({ lang = 'ko', status, dDay, totalDays, daysIn, weekNum, t
         </div>
       </Card>
 
-      {/* 오늘의 수업 — BIG */}
-      <SectionTitle kicker={lang === 'ko' ? `${dayKoMap[todayKey]}요일 · TODAY` : `${todayKey.toUpperCase()} · TODAY`}>
-        {lang === 'ko' ? '오늘의 수업' : "Today's Classes"}
-      </SectionTitle>
-      <Card>
-        {todayClasses.length === 0 ? (
-          <div style={{ padding: '8px 0', fontSize: 13, color: '#7A8E7E' }}>
-            {lang === 'ko' ? '오늘은 수업이 없어요. ' : 'No classes today. '}
-            <button onClick={() => goTo('schedule')} style={inlineLink}>
-              {lang === 'ko' ? '시간표 편집 →' : 'Edit schedule →'}
-            </button>
-          </div>
-        ) : (
-          <div>
-            {todayClasses.map((c, i) => {
-              const [h,m] = c.time.split(':').map(Number);
-              const startMin = h * 60 + m;
-              // 끝시간: endTime이 있으면 그걸 쓰고, 없으면 +45분 (기본 어학원 수업)
-              let endMin;
-              if (c.endTime) {
-                const [eh, em] = c.endTime.split(':').map(Number);
-                endMin = eh * 60 + em;
-              } else {
-                endMin = startMin + 45;
-              }
-              const isPast = endMin < nowMinutes;
-              const isNow = startMin <= nowMinutes && endMin >= nowMinutes;
-              const endStr = c.endTime || `${String(Math.floor(endMin/60)).padStart(2,'0')}:${String(endMin%60).padStart(2,'0')}`;
-              return (
-                <div key={i} style={{
-                  display: 'flex', alignItems: 'center', gap: 14,
-                  padding: '14px 0',
-                  opacity: isPast ? 0.4 : 1,
-                  borderBottom: i < todayClasses.length - 1 ? '1px dashed rgba(31,58,46,0.15)' : 'none'
-                }}>
-                  <div className="display" style={{
-                    minWidth: 64,
-                    color: isPast ? '#7A8E7E' : '#C45A3F'
-                  }}>
-                    <div style={{ fontSize: 22, fontWeight: 600, lineHeight: 1 }}>{c.time}</div>
-                    <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>~ {endStr}</div>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 15, textDecoration: isPast ? 'line-through' : 'none' }}>
-                      {c.subject || '수업'}
-                    </div>
-                    {(c.teacher || c.room || c.floor) && (
-                      <div style={{ fontSize: 11, color: '#7A8E7E', marginTop: 3 }}>
-                        {[c.teacher, c.room, c.floor].filter(Boolean).join(' · ')}
-                      </div>
-                    )}
-                  </div>
-                  {isNow && (
-                    <div style={{
-                      fontSize: 9, padding: '3px 7px', borderRadius: 4,
-                      background: '#C45A3F', color: '#F5EFE0', letterSpacing: '0.1em', fontWeight: 700
-                    }}>NOW</div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+      {/* 오늘의 한 줄 — 동기부여 (날짜 기반 회전, 매일 다른 글) */}
+      <SectionTitle kicker="DAILY · MOTIVATION">{lang === 'ko' ? '오늘의 한 줄' : 'Daily Quote'}</SectionTitle>
+      <Card style={{ padding: 20 }}>
+        <div className="display-italic" style={{
+          fontSize: 16, lineHeight: 1.5, fontWeight: 500,
+          color: '#1F3A2E', letterSpacing: '-0.005em',
+        }}>
+          "{lang === 'ko' ? todayMotivation.ko : todayMotivation.en}"
+        </div>
+        <div style={{
+          fontSize: 10, opacity: 0.55, marginTop: 10, letterSpacing: '0.05em',
+          color: '#5C6F62',
+        }}>
+          — {todayMotivation.src}
+        </div>
       </Card>
 
       {/* 오늘 할 일 */}
@@ -1189,6 +1141,70 @@ function DashboardTab({ lang = 'ko', status, dDay, totalDays, daysIn, weekNum, t
           </Card>
         </>
       )}
+
+      {/* 오늘의 수업 — 시간표 메뉴에 별도 있으니 홈에선 보조적으로 */}
+      <SectionTitle kicker={lang === 'ko' ? `${dayKoMap[todayKey]}요일 · TODAY` : `${todayKey.toUpperCase()} · TODAY`}>
+        {lang === 'ko' ? '오늘의 수업' : "Today's Classes"}
+      </SectionTitle>
+      <Card>
+        {todayClasses.length === 0 ? (
+          <div style={{ padding: '8px 0', fontSize: 13, color: '#7A8E7E' }}>
+            {lang === 'ko' ? '오늘은 수업이 없어요. ' : 'No classes today. '}
+            <button onClick={() => goTo('schedule')} style={inlineLink}>
+              {lang === 'ko' ? '시간표 편집 →' : 'Edit schedule →'}
+            </button>
+          </div>
+        ) : (
+          <div>
+            {todayClasses.map((c, i) => {
+              const [h,m] = c.time.split(':').map(Number);
+              const startMin = h * 60 + m;
+              let endMin;
+              if (c.endTime) {
+                const [eh, em] = c.endTime.split(':').map(Number);
+                endMin = eh * 60 + em;
+              } else {
+                endMin = startMin + 45;
+              }
+              const isPast = endMin < nowMinutes;
+              const isNow = startMin <= nowMinutes && endMin >= nowMinutes;
+              const endStr = c.endTime || `${String(Math.floor(endMin/60)).padStart(2,'0')}:${String(endMin%60).padStart(2,'0')}`;
+              return (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'center', gap: 14,
+                  padding: '14px 0',
+                  opacity: isPast ? 0.4 : 1,
+                  borderBottom: i < todayClasses.length - 1 ? '1px dashed rgba(31,58,46,0.15)' : 'none'
+                }}>
+                  <div className="display" style={{
+                    minWidth: 64,
+                    color: isPast ? '#7A8E7E' : '#C45A3F'
+                  }}>
+                    <div style={{ fontSize: 22, fontWeight: 600, lineHeight: 1 }}>{c.time}</div>
+                    <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>~ {endStr}</div>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 15, textDecoration: isPast ? 'line-through' : 'none' }}>
+                      {c.subject || '수업'}
+                    </div>
+                    {(c.teacher || c.room || c.floor) && (
+                      <div style={{ fontSize: 11, color: '#7A8E7E', marginTop: 3 }}>
+                        {[c.teacher, c.room, c.floor].filter(Boolean).join(' · ')}
+                      </div>
+                    )}
+                  </div>
+                  {isNow && (
+                    <div style={{
+                      fontSize: 9, padding: '3px 7px', borderRadius: 4,
+                      background: '#C45A3F', color: '#F5EFE0', letterSpacing: '0.1em', fontWeight: 700
+                    }}>NOW</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
 
       {/* 하단 요약 — 지출 + 할 일 (컴팩트) */}
       <SectionTitle kicker="OVERVIEW">간단히 보기</SectionTitle>
