@@ -2444,6 +2444,24 @@ function MoneyTab({ lang = 'ko', phpRate, setPhpRate, rateUpdated, setRateUpdate
 // ============================================================
 //  Diary 섹션 — 한·영 일기 목록 + 마크다운 붙여넣기 + 상세 보기
 // ============================================================
+// 저장된 일기 페어에서 ko/en이 뒤집혀 있으면 자동으로 바로잡음.
+// 새 일기는 파서가 이미 분류해서 저장하지만, 기존에 잘못 저장된 일기도
+// 표시 시점에 한 번 더 분류해서 화면엔 항상 한국어=작게, 영어=크게로 표시.
+function ensureKoEnOrder(pair) {
+  const koRatio = (text) => {
+    if (!text) return 0;
+    const ko = (text.match(/[가-힣]/g) || []).length;
+    const en = (text.match(/[A-Za-z]/g) || []).length;
+    if (ko + en === 0) return 0.5;
+    return ko / (ko + en);
+  };
+  const ra = koRatio(pair.ko);
+  const rb = koRatio(pair.en);
+  // ko 자리의 한국어 비율이 en 자리보다 낮으면 뒤집혀 있는 것 → 스왑
+  if (ra < rb) return { ko: pair.en, en: pair.ko };
+  return pair;
+}
+
 function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpenId, onPendingOpenConsumed }) {
   const t = (ko, en) => lang === 'ko' ? ko : en;
   const [view, setView] = useState('list'); // list | add | detail
@@ -2510,22 +2528,25 @@ function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpe
         }}>← {t('목록으로', 'Back to list')}</button>
         <SectionTitle kicker={d.date}>{d.title}</SectionTitle>
 
-        {/* 본문 페어들 */}
+        {/* 본문 페어들 — 표시 시점에 한 번 더 한·영 자동 분류 (이전에 뒤집혀 저장된 일기도 바로잡음) */}
         <Card style={{ padding: 18 }}>
-          {d.paragraphs.map((p, i) => (
-            <div key={i} style={{ marginBottom: i < d.paragraphs.length - 1 ? 22 : 0 }}>
-              {p.ko && (
-                <div style={{ fontSize: 12, color: '#7A8E7E', lineHeight: 1.6, marginBottom: 6 }}>
-                  {p.ko}
-                </div>
-              )}
-              {p.en && (
-                <div style={{ fontSize: 15, color: '#1F3A2E', lineHeight: 1.6, fontWeight: 500 }}>
-                  {p.en}
-                </div>
-              )}
-            </div>
-          ))}
+          {d.paragraphs.map((p, i) => {
+            const fixed = ensureKoEnOrder(p);
+            return (
+              <div key={i} style={{ marginBottom: i < d.paragraphs.length - 1 ? 22 : 0 }}>
+                {fixed.ko && (
+                  <div style={{ fontSize: 12, color: '#7A8E7E', lineHeight: 1.6, marginBottom: 6 }}>
+                    {fixed.ko}
+                  </div>
+                )}
+                {fixed.en && (
+                  <div style={{ fontSize: 15, color: '#1F3A2E', lineHeight: 1.6, fontWeight: 500 }}>
+                    {fixed.en}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </Card>
 
         {/* Vocabulary */}

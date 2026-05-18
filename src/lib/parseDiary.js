@@ -38,6 +38,24 @@ const SECTION_HEADER_PATTERNS = {
   expressions: /^##\s+(useful\s*expressions?|expressions?|표현)\s*$/i,
 };
 
+// 텍스트가 한국어인지 영어인지 판별 — 한글 글자 수와 라틴 글자 수 비교
+function koreanRatio(text) {
+  if (!text) return 0;
+  const koChars = (text.match(/[가-힣]/g) || []).length;
+  const enChars = (text.match(/[A-Za-z]/g) || []).length;
+  if (koChars + enChars === 0) return 0.5; // 둘 다 없음 (숫자·구두점만)
+  return koChars / (koChars + enChars);
+}
+
+// 두 문단을 받아서 한국어/영어로 분류. 한국어 비율이 높은 쪽을 ko로 배치.
+function classifyPair(a, b) {
+  const ra = koreanRatio(a);
+  const rb = koreanRatio(b);
+  // a가 한국어일 가능성이 더 높으면 그대로, 아니면 스왑
+  if (ra >= rb) return { ko: a, en: b };
+  return { ko: b, en: a };
+}
+
 // 마크다운 표 한 행을 파싱 — `| a | b | c |` → ['a', 'b', 'c']
 function parseTableRow(line) {
   if (!line.includes('|')) return null;
@@ -143,14 +161,16 @@ export function parseDiaryMarkdown(text) {
   }
   if (buffer.length > 0) paragraphs.push(buffer.join('\n').trim());
 
-  // 짝수면 한·영 페어, 홀수면 마지막은 ko-only
+  // 페어로 묶되, 각 페어 안에서 어떤 게 한국어이고 어떤 게 영어인지 자동 감지.
+  // 사용자가 한·영 순서를 바꿔 붙여넣거나 첫 줄이 잘려도 화면에 항상 한국어=작게, 영어=크게로 표시되도록.
   for (let i = 0; i < paragraphs.length; i += 2) {
-    const ko = paragraphs[i];
-    const en = paragraphs[i + 1] || '';
+    const a = paragraphs[i];
+    const b = paragraphs[i + 1] || '';
+    const { ko, en } = classifyPair(a, b);
     result.paragraphs.push({ ko, en });
   }
   if (paragraphs.length % 2 === 1) {
-    warnings.push(`본문 문단 수가 홀수(${paragraphs.length}). 마지막 한국어에 영어 짝이 없음.`);
+    warnings.push(`본문 문단 수가 홀수(${paragraphs.length}). 마지막 문단에 짝이 없음.`);
   }
 
   // 3) 표 섹션 — 헤더 매칭 후 표 파싱
