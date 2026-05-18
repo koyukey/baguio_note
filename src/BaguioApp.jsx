@@ -1895,13 +1895,12 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
   };
 
   // 수업 카테고리에 따라 색상.
-  // 우선순위: 1) 강의실 M으로 시작 → 1:1, 2) 강의실 G로 시작 → Group,
-  // 3) 그 외엔 과목명으로 세분류 (speak/read/writ/listen/grammar/activity).
-  // 사용자 지시: 1:1인지 그룹인지 강의실로 명확히 판별되면 그게 최우선.
+  // 우선순위: 1) 강의실 M으로 시작 → 1:1 (최우선), 2) 그 외엔 과목명으로 세분류.
+  // 사용자 지시: 1:1 아니면 당연히 그룹이라 'Group' 색은 별도로 두지 않음 —
+  // 어떤 그룹 수업인지(speak/read/writ/listen/grammar/activity)가 더 의미 있음.
   const getClassColor = (cls) => {
     const room = (cls.room || '').trim().toUpperCase();
-    if (room.startsWith('M')) return '#7B4F8E';  // 1:1 Lesson (진보라)
-    if (room.startsWith('G')) return '#D4A53A';  // Group (황금)
+    if (room.startsWith('M')) return '#7B4F8E';  // 1:1 Lesson (진보라) — 최우선
     const s = (cls.subject || '').toLowerCase();
     if (s.includes('speak')) return '#C45A3F';   // Speaking (진주황)
     if (s.includes('read')) return '#5C6F62';    // Reading (회녹)
@@ -1909,8 +1908,7 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
     if (s.includes('listen')) return '#1F3A2E';  // Listening (진녹)
     if (s.includes('grammar')) return '#3B6B8A'; // Grammar (블루그레이)
     if (s.includes('activity') || s.includes('activ')) return '#D17B3A'; // Activity (밝은주황)
-    if (s.includes('group') || s.includes('class')) return '#D4A53A'; // Group fallback
-    return '#1F3A2E'; // 기본 진녹
+    return '#5C6F62'; // 매칭 안 되는 그룹 수업 기본색 (회녹)
   };
 
   return (
@@ -2112,7 +2110,6 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
         }}>
           {[
             { label: '1:1 (M room)', color: '#7B4F8E' },
-            { label: 'Group (G room)', color: '#D4A53A' },
             { label: 'Speaking', color: '#C45A3F' },
             { label: 'Reading', color: '#5C6F62' },
             { label: 'Writing', color: '#8A5A3B' },
