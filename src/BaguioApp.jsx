@@ -1766,11 +1766,12 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
   const jsDayToKey = { 0:'sun', 1:'mon', 2:'tue', 3:'wed', 4:'thu', 5:'fri', 6:'sat' };
   const todayDayKey = jsDayToKey[todayJsDay];
 
-  // 시간 슬롯 — 실제 데이터의 시간 + 비어있을 때 기본값
-  const uniqueTimes = [...new Set(schedule.map(s => s.time))].sort();
-  const timeRows = uniqueTimes.length > 0
-    ? uniqueTimes
-    : ['08:00','09:00','10:00','11:00','13:00','14:00','15:00','16:00'];
+  // 시간 슬롯 — 기본 시간대(08:00~18:00 매 정시)는 항상 표시.
+  // 사용자가 추가한 비표준 시간(예: 19:30)이 있으면 합집합으로 같이 표시.
+  // 이렇게 해야 수업을 삭제해도 그 시간 행이 통째 사라지지 않음 (빈 칸으로 남음).
+  const DEFAULT_TIME_SLOTS = ['08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00'];
+  const dataTimes = [...new Set(schedule.map(s => s.time))];
+  const timeRows = [...new Set([...DEFAULT_TIME_SLOTS, ...dataTimes])].sort();
 
   // 셀에 해당하는 수업 찾기
   const findClass = (time, day) =>
