@@ -1846,7 +1846,7 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
     } else {
       setSchedule([...schedule, next]);
     }
-    setForm({ day: 'mon', time: '09:00', endTime: '09:45', subject: '', teacher: '', room: '', floor: '' });
+    setForm({ day: 'mon', time: '09:00', endTime: '09:45', subject: '', teacher: '', room: '', floor: '', category: '' });
     setEditing(null);
   };
   const editItem = (i) => {
@@ -1859,6 +1859,7 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
       teacher: s.teacher || '',
       room: s.room || '',
       floor: s.floor || '',
+      category: s.category || '',
     });
     setEditing(i);
     setTimeout(() => {
@@ -1869,13 +1870,13 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
   const removeItem = () => {
     if (editing !== null) {
       setSchedule(schedule.filter((_, idx) => idx !== editing));
-      setForm({ day: 'mon', time: '09:00', endTime: '09:45', subject: '', teacher: '', room: '', floor: '' });
+      setForm({ day: 'mon', time: '09:00', endTime: '09:45', subject: '', teacher: '', room: '', floor: '', category: '' });
       setEditing(null);
     }
   };
   const addAtSlot = (time, day) => {
     const endTime = minutesToTime(timeToMinutes(time) + 45);
-    setForm({ day, time, endTime, subject: '', teacher: '', room: '', floor: '' });
+    setForm({ day, time, endTime, subject: '', teacher: '', room: '', floor: '', category: '' });
     setEditing(null);
     setTimeout(() => {
       const el = typeof document !== 'undefined' ? document.getElementById('schedule-editor') : null;
@@ -1894,21 +1895,42 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
     setForm({ ...form, time: newStart, endTime: minutesToTime(Math.min(newEndMin, 23 * 60 + 59)) });
   };
 
+  // 카테고리 정의 — UI 옵션과 색 매핑 한 곳에서 관리
+  const CATEGORY_COLORS = {
+    '1on1':      '#7B4F8E', // 1:1 Lesson (진보라)
+    'speaking':  '#C45A3F', // Speaking (진주황)
+    'reading':   '#5C6F62', // Reading (회녹)
+    'writing':   '#8A5A3B', // Writing (갈색)
+    'listening': '#1F3A2E', // Listening (진녹)
+    'grammar':   '#3B6B8A', // Grammar (블루그레이)
+    'activity':  '#D17B3A', // Activity (밝은주황)
+  };
+  const CATEGORY_OPTIONS = [
+    { key: '',          label: '자동 분류 (기본)' },
+    { key: '1on1',      label: '1:1 Lesson' },
+    { key: 'speaking',  label: 'Speaking' },
+    { key: 'reading',   label: 'Reading' },
+    { key: 'writing',   label: 'Writing' },
+    { key: 'listening', label: 'Listening' },
+    { key: 'grammar',   label: 'Grammar' },
+    { key: 'activity',  label: 'Activity' },
+  ];
+
   // 수업 카테고리에 따라 색상.
-  // 우선순위: 1) 강의실 M으로 시작 → 1:1 (최우선), 2) 그 외엔 과목명으로 세분류.
-  // 사용자 지시: 1:1 아니면 당연히 그룹이라 'Group' 색은 별도로 두지 않음 —
-  // 어떤 그룹 수업인지(speak/read/writ/listen/grammar/activity)가 더 의미 있음.
+  // 우선순위: 1) 사용자가 명시적으로 지정한 category, 2) 강의실 M → 1:1,
+  // 3) 그 외엔 과목명으로 세분류.
   const getClassColor = (cls) => {
+    if (cls.category && CATEGORY_COLORS[cls.category]) return CATEGORY_COLORS[cls.category];
     const room = (cls.room || '').trim().toUpperCase();
-    if (room.startsWith('M')) return '#7B4F8E';  // 1:1 Lesson (진보라) — 최우선
+    if (room.startsWith('M')) return CATEGORY_COLORS['1on1'];
     const s = (cls.subject || '').toLowerCase();
-    if (s.includes('speak')) return '#C45A3F';   // Speaking (진주황)
-    if (s.includes('read')) return '#5C6F62';    // Reading (회녹)
-    if (s.includes('writ')) return '#8A5A3B';    // Writing (갈색)
-    if (s.includes('listen')) return '#1F3A2E';  // Listening (진녹)
-    if (s.includes('grammar')) return '#3B6B8A'; // Grammar (블루그레이)
-    if (s.includes('activity') || s.includes('activ')) return '#D17B3A'; // Activity (밝은주황)
-    return '#5C6F62'; // 매칭 안 되는 그룹 수업 기본색 (회녹)
+    if (s.includes('speak')) return CATEGORY_COLORS.speaking;
+    if (s.includes('read')) return CATEGORY_COLORS.reading;
+    if (s.includes('writ')) return CATEGORY_COLORS.writing;
+    if (s.includes('listen')) return CATEGORY_COLORS.listening;
+    if (s.includes('grammar')) return CATEGORY_COLORS.grammar;
+    if (s.includes('activity') || s.includes('activ')) return CATEGORY_COLORS.activity;
+    return '#5C6F62'; // 매칭 안 됨 — 회녹 기본
   };
 
   return (
@@ -2177,6 +2199,21 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
             <div style={labelStyle}>층</div>
             <input value={form.floor} onChange={(e) => setForm({...form, floor: e.target.value})} placeholder="예: B5" style={inputStyle} />
           </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <div style={labelStyle}>카테고리 (색상)</div>
+            <select
+              value={form.category}
+              onChange={(e) => setForm({...form, category: e.target.value})}
+              style={inputStyle}
+            >
+              {CATEGORY_OPTIONS.map(opt => (
+                <option key={opt.key} value={opt.key}>{opt.label}</option>
+              ))}
+            </select>
+            <div style={{ fontSize: 10, color: '#7A8E7E', marginTop: 4 }}>
+              자동 분류로 색이 안 맞으면 직접 선택하세요. 선택한 카테고리가 항상 우선됩니다.
+            </div>
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           <button onClick={save} style={{ ...primaryBtn, flex: 1, justifyContent: 'center' }}>
@@ -2187,7 +2224,7 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
               <button onClick={removeItem} style={{ ...secondaryBtn, color: '#C45A3F', borderColor: 'rgba(196,90,63,0.3)' }}>
                 <Trash2 size={14} />
               </button>
-              <button onClick={() => { setEditing(null); setForm({ day: 'mon', time: '09:00', endTime: '09:45', subject: '', teacher: '', room: '', floor: '' }); }} style={secondaryBtn}>
+              <button onClick={() => { setEditing(null); setForm({ day: 'mon', time: '09:00', endTime: '09:45', subject: '', teacher: '', room: '', floor: '', category: '' }); }} style={secondaryBtn}>
                 취소
               </button>
             </>
