@@ -1052,8 +1052,18 @@ function DashboardTab({ lang = 'ko', status, dDay, totalDays, daysIn, weekNum, t
           <div>
             {todayClasses.map((c, i) => {
               const [h,m] = c.time.split(':').map(Number);
-              const isPast = h * 60 + m + 60 < nowMinutes; // 1시간 이상 지난 수업
-              const isNow = upcomingToday && c.time !== upcomingToday.time && h * 60 + m <= nowMinutes && h * 60 + m + 60 >= nowMinutes;
+              const startMin = h * 60 + m;
+              // 끝시간: endTime이 있으면 그걸 쓰고, 없으면 +45분 (기본 어학원 수업)
+              let endMin;
+              if (c.endTime) {
+                const [eh, em] = c.endTime.split(':').map(Number);
+                endMin = eh * 60 + em;
+              } else {
+                endMin = startMin + 45;
+              }
+              const isPast = endMin < nowMinutes;
+              const isNow = startMin <= nowMinutes && endMin >= nowMinutes;
+              const endStr = c.endTime || `${String(Math.floor(endMin/60)).padStart(2,'0')}:${String(endMin%60).padStart(2,'0')}`;
               return (
                 <div key={i} style={{
                   display: 'flex', alignItems: 'center', gap: 14,
@@ -1062,9 +1072,12 @@ function DashboardTab({ lang = 'ko', status, dDay, totalDays, daysIn, weekNum, t
                   borderBottom: i < todayClasses.length - 1 ? '1px dashed rgba(31,58,46,0.15)' : 'none'
                 }}>
                   <div className="display" style={{
-                    fontSize: 22, fontWeight: 600, minWidth: 64,
+                    minWidth: 64,
                     color: isPast ? '#7A8E7E' : '#C45A3F'
-                  }}>{c.time}</div>
+                  }}>
+                    <div style={{ fontSize: 22, fontWeight: 600, lineHeight: 1 }}>{c.time}</div>
+                    <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>~ {endStr}</div>
+                  </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600, fontSize: 15, textDecoration: isPast ? 'line-through' : 'none' }}>
                       {c.subject || '수업'}
@@ -1746,9 +1759,27 @@ function AchievementCalendar({ checklist, routines }) {
 // ============================================================
 //  시간표 탭 — 한 주 그리드 뷰
 // ============================================================
+// 'HH:MM' → 분 단위 정수 (0 ~ 1439)
+function timeToMinutes(t) {
+  if (!t || typeof t !== 'string') return 0;
+  const [h, m] = t.split(':').map(n => parseInt(n, 10));
+  return (h || 0) * 60 + (m || 0);
+}
+// 분 단위 정수 → 'HH:MM'
+function minutesToTime(min) {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+// endTime이 없으면 time + 45분으로 자동 계산 (어학원 기본 수업 길이)
+function getEndTime(cls) {
+  if (cls.endTime) return cls.endTime;
+  return minutesToTime(Math.min(timeToMinutes(cls.time) + 45, 23 * 60 + 59));
+}
+
 function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
   const [editing, setEditing] = useState(null); // index or null
-  const [form, setForm] = useState({ day: 'mon', time: '09:00', subject: '', teacher: '', room: '' });
+  const [form, setForm] = useState({ day: 'mon', time: '09:00', endTime: '09:45', subject: '', teacher: '', room: '' });
 
   const allDays = [
     { key: 'mon', ko: '월', en: 'Mon' }, { key: 'tue', ko: '화', en: 'Tue' }, { key: 'wed', ko: '수', en: 'Wed' },
@@ -1766,31 +1797,52 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
   const jsDayToKey = { 0:'sun', 1:'mon', 2:'tue', 3:'wed', 4:'thu', 5:'fri', 6:'sat' };
   const todayDayKey = jsDayToKey[todayJsDay];
 
-  // 시간 슬롯 — 기본 시간대(08:00~18:00 매 정시)는 항상 표시.
-  // 사용자가 추가한 비표준 시간(예: 19:30)이 있으면 합집합으로 같이 표시.
-  // 이렇게 해야 수업을 삭제해도 그 시간 행이 통째 사라지지 않음 (빈 칸으로 남음).
-  const DEFAULT_TIME_SLOTS = ['08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00'];
-  const dataTimes = [...new Set(schedule.map(s => s.time))];
-  const timeRows = [...new Set([...DEFAULT_TIME_SLOTS, ...dataTimes])].sort();
+  // 30분 단위 그리드 — 기본 08:00 ~ 18:00.
+  // 데이터가 그 범위 바깥(예: 07:30 시작, 20:00 끝)이면 범위 자동 확장.
+  const SLOT_MINUTES = 30;
+  let gridStartMin = 8 * 60;  // 08:00
+  let gridEndMin = 18 * 60;   // 18:00 (마지막 슬롯 시작)
+  for (const s of schedule) {
+    const startMin = timeToMinutes(s.time);
+    const endMin = timeToMinutes(getEndTime(s));
+    if (startMin < gridStartMin) gridStartMin = Math.floor(startMin / SLOT_MINUTES) * SLOT_MINUTES;
+    if (endMin > gridEndMin + SLOT_MINUTES) gridEndMin = Math.ceil(endMin / SLOT_MINUTES) * SLOT_MINUTES - SLOT_MINUTES;
+  }
+  const totalSlots = ((gridEndMin - gridStartMin) / SLOT_MINUTES) + 1; // 슬롯 개수
+  const SLOT_HEIGHT = 30; // 30분당 30px → 1분당 1px
+  const PIXELS_PER_MIN = SLOT_HEIGHT / SLOT_MINUTES;
+  const slotTimes = Array.from({ length: totalSlots }, (_, i) => gridStartMin + i * SLOT_MINUTES);
 
-  // 셀에 해당하는 수업 찾기
-  const findClass = (time, day) =>
-    schedule.findIndex(s => s.time === time && s.day === day);
+  // 빈 칸 클릭 시 사용할 day/time 계산
+  const slotKey = (time, day) => `${day}-${time}`;
 
   const save = () => {
     if (!form.subject.trim()) return;
-    if (editing !== null) {
-      setSchedule(schedule.map((s, i) => i === editing ? form : s));
-    } else {
-      setSchedule([...schedule, form]);
+    // endTime이 비어있거나 잘못된 경우 보정
+    let endTime = form.endTime;
+    if (!endTime || timeToMinutes(endTime) <= timeToMinutes(form.time)) {
+      endTime = minutesToTime(Math.min(timeToMinutes(form.time) + 45, 23 * 60 + 59));
     }
-    setForm({ day: 'mon', time: '09:00', subject: '', teacher: '', room: '' });
+    const next = { ...form, endTime };
+    if (editing !== null) {
+      setSchedule(schedule.map((s, i) => i === editing ? next : s));
+    } else {
+      setSchedule([...schedule, next]);
+    }
+    setForm({ day: 'mon', time: '09:00', endTime: '09:45', subject: '', teacher: '', room: '' });
     setEditing(null);
   };
   const editItem = (i) => {
-    setForm(schedule[i]);
+    const s = schedule[i];
+    setForm({
+      day: s.day || 'mon',
+      time: s.time || '09:00',
+      endTime: s.endTime || getEndTime(s),
+      subject: s.subject || '',
+      teacher: s.teacher || '',
+      room: s.room || '',
+    });
     setEditing(i);
-    // 폼으로 스크롤
     setTimeout(() => {
       const el = typeof document !== 'undefined' ? document.getElementById('schedule-editor') : null;
       if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1799,17 +1851,29 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
   const removeItem = () => {
     if (editing !== null) {
       setSchedule(schedule.filter((_, idx) => idx !== editing));
-      setForm({ day: 'mon', time: '09:00', subject: '', teacher: '', room: '' });
+      setForm({ day: 'mon', time: '09:00', endTime: '09:45', subject: '', teacher: '', room: '' });
       setEditing(null);
     }
   };
   const addAtSlot = (time, day) => {
-    setForm({ day, time, subject: '', teacher: '', room: '' });
+    const endTime = minutesToTime(timeToMinutes(time) + 45);
+    setForm({ day, time, endTime, subject: '', teacher: '', room: '' });
     setEditing(null);
     setTimeout(() => {
       const el = typeof document !== 'undefined' ? document.getElementById('schedule-editor') : null;
       if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 50);
+  };
+
+  // 시작 시간 변경 시 끝 시간이 자동으로 +45분 따라옴 (사용자가 끝 시간을 명시적으로 바꾸기 전까지)
+  const handleStartChange = (newStart) => {
+    const startMin = timeToMinutes(newStart);
+    const oldStartMin = timeToMinutes(form.time);
+    const oldEndMin = timeToMinutes(form.endTime || getEndTime(form));
+    // 기존 길이 유지 (사용자가 한 번 endTime을 직접 잡았다면 그 길이 보존)
+    const duration = oldEndMin - oldStartMin;
+    const newEndMin = startMin + (duration > 0 ? duration : 45);
+    setForm({ ...form, time: newStart, endTime: minutesToTime(Math.min(newEndMin, 23 * 60 + 59)) });
   };
 
   // 수업 카테고리에 따라 색상 (간단 분류)
@@ -1858,95 +1922,140 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
           })}
         </div>
 
-        {/* 시간별 행 */}
-        {timeRows.map(time => (
-          <div key={time} style={{
-            display: 'grid',
-            gridTemplateColumns: `26px repeat(${visibleDays.length}, 1fr)`,
-            gap: 3, marginBottom: 3
-          }}>
-            {/* 시간 레이블 */}
-            <div className="display" style={{
-              fontSize: 10,
-              color: '#7A8E7E',
-              fontWeight: 700,
-              textAlign: 'right',
-              paddingRight: 2,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'flex-end',
-              letterSpacing: '-0.02em'
-            }}>
-              {time.split(':')[0]}
-            </div>
-
-            {/* 각 요일 셀 */}
-            {visibleDays.map(d => {
-              const idx = findClass(time, d.key);
-              const isToday = d.key === todayDayKey;
-              if (idx >= 0) {
-                const cls = schedule[idx];
-                const bg = getClassColor(cls.subject);
-                const isEditing = editing === idx;
-                return (
-                  <button key={d.key} onClick={() => editItem(idx)} style={{
-                    background: bg,
-                    color: '#F5EFE0',
-                    border: isEditing ? '2px solid #F5EFE0' : 'none',
-                    outline: isEditing ? `2px solid ${bg}` : 'none',
-                    borderRadius: 6,
-                    padding: '5px 3px',
-                    minHeight: 58,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    textAlign: 'center',
-                    gap: 2,
-                    overflow: 'hidden',
-                    fontFamily: 'inherit',
-                    transition: 'transform 0.15s',
-                  }}>
-                    <div style={{ fontSize: 8, opacity: 0.6, fontWeight: 600, letterSpacing: '0.02em' }}>
-                      {cls.time}
-                    </div>
-                    <div style={{
-                      fontSize: 10, fontWeight: 700, lineHeight: 1.15,
-                      overflow: 'hidden',
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                      wordBreak: 'break-word'
-                    }}>
-                      {cls.subject}
-                    </div>
-                    {cls.teacher && (
-                      <div style={{
-                        fontSize: 8, opacity: 0.7, lineHeight: 1.1,
-                        overflow: 'hidden', textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap', maxWidth: '100%'
-                      }}>
-                        {cls.teacher.replace('Teacher ', 'T. ')}
-                      </div>
-                    )}
-                  </button>
-                );
-              }
-              return (
-                <button key={d.key} onClick={() => addAtSlot(time, d.key)} style={{
-                  background: isToday ? 'rgba(196,90,63,0.04)' : 'transparent',
-                  border: '1px dashed rgba(31,58,46,0.13)',
-                  borderRadius: 6,
-                  minHeight: 58,
-                  cursor: 'pointer',
-                  padding: 0,
-                  fontFamily: 'inherit'
-                }} />
-              );
-            })}
+        {/* 30분 단위 그리드 + 카드 절대 위치 (실제 길이대로 늘어남) */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: `26px repeat(${visibleDays.length}, 1fr)`,
+          gap: 3,
+          position: 'relative',
+        }}>
+          {/* 왼쪽 시간 레이블 컬럼 */}
+          <div style={{ position: 'relative' }}>
+            {slotTimes.map((min, i) => (
+              <div key={min} className="display" style={{
+                height: SLOT_HEIGHT,
+                fontSize: 9,
+                color: '#7A8E7E',
+                fontWeight: 700,
+                textAlign: 'right',
+                paddingRight: 2,
+                letterSpacing: '-0.02em',
+                // 정시(00분)만 진하게, 30분은 흐리게
+                opacity: min % 60 === 0 ? 1 : 0.45,
+                lineHeight: '12px',
+              }}>
+                {min % 60 === 0 ? minutesToTime(min) : ''}
+              </div>
+            ))}
           </div>
-        ))}
+
+          {/* 각 요일 컬럼 */}
+          {visibleDays.map(d => {
+            const isToday = d.key === todayDayKey;
+            // 이 요일의 수업들
+            const dayClasses = schedule
+              .map((s, idx) => ({ s, idx }))
+              .filter(({ s }) => s.day === d.key);
+
+            return (
+              <div key={d.key} style={{
+                position: 'relative',
+                background: isToday ? 'rgba(196,90,63,0.04)' : 'transparent',
+                borderRadius: 6,
+              }}>
+                {/* 빈 슬롯들 (배경 — 클릭으로 추가) */}
+                {slotTimes.map((min) => {
+                  const time = minutesToTime(min);
+                  return (
+                    <button key={min} onClick={() => addAtSlot(time, d.key)} style={{
+                      position: 'absolute',
+                      top: ((min - gridStartMin) * PIXELS_PER_MIN),
+                      left: 0,
+                      right: 0,
+                      height: SLOT_HEIGHT,
+                      background: 'transparent',
+                      border: 'none',
+                      borderTop: min % 60 === 0
+                        ? '1px solid rgba(31,58,46,0.1)'
+                        : '1px dashed rgba(31,58,46,0.06)',
+                      cursor: 'pointer',
+                      padding: 0,
+                      fontFamily: 'inherit',
+                    }} aria-label={`${time} ${d.ko}요일에 추가`} />
+                  );
+                })}
+
+                {/* 수업 카드 — 절대 위치 */}
+                {dayClasses.map(({ s, idx }) => {
+                  const startMin = timeToMinutes(s.time);
+                  const endMin = timeToMinutes(getEndTime(s));
+                  const top = (startMin - gridStartMin) * PIXELS_PER_MIN;
+                  const height = Math.max((endMin - startMin) * PIXELS_PER_MIN, 18);
+                  const bg = getClassColor(s.subject);
+                  const isEditing = editing === idx;
+                  // 짧은 수업(45분 미만)은 정보 축약
+                  const showTeacher = height >= 40 && s.teacher;
+                  return (
+                    <button
+                      key={idx}
+                      onClick={(e) => { e.stopPropagation(); editItem(idx); }}
+                      style={{
+                        position: 'absolute',
+                        top: top + 1,
+                        left: 1,
+                        right: 1,
+                        height: height - 2,
+                        background: bg,
+                        color: '#F5EFE0',
+                        border: isEditing ? '2px solid #F5EFE0' : 'none',
+                        outline: isEditing ? `2px solid ${bg}` : 'none',
+                        borderRadius: 5,
+                        padding: '3px 4px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'flex-start',
+                        alignItems: 'flex-start',
+                        textAlign: 'left',
+                        gap: 1,
+                        overflow: 'hidden',
+                        fontFamily: 'inherit',
+                        zIndex: 2,
+                      }}
+                    >
+                      <div style={{ fontSize: 8, opacity: 0.75, fontWeight: 600, letterSpacing: '0.02em', lineHeight: 1 }}>
+                        {s.time}–{getEndTime(s)}
+                      </div>
+                      <div style={{
+                        fontSize: 10, fontWeight: 700, lineHeight: 1.15,
+                        overflow: 'hidden',
+                        display: '-webkit-box',
+                        WebkitLineClamp: height < 35 ? 1 : 2,
+                        WebkitBoxOrient: 'vertical',
+                        wordBreak: 'break-word',
+                        width: '100%',
+                      }}>
+                        {s.subject}
+                      </div>
+                      {showTeacher && (
+                        <div style={{
+                          fontSize: 8, opacity: 0.7, lineHeight: 1.1,
+                          overflow: 'hidden', textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap', maxWidth: '100%',
+                        }}>
+                          {s.teacher.replace('Teacher ', 'T. ')}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+
+                {/* 컬럼 높이 확보용 spacer */}
+                <div style={{ height: totalSlots * SLOT_HEIGHT, pointerEvents: 'none' }} />
+              </div>
+            );
+          })}
+        </div>
 
         {/* 새 시간대 추가 힌트 */}
         <div style={{
@@ -1954,7 +2063,7 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
           borderTop: '1px dashed rgba(31,58,46,0.1)',
           fontSize: 10, color: '#A8B8AB', textAlign: 'center'
         }}>
-          새 시간대는 아래 폼에서 직접 입력하세요
+          빈 시간을 탭하면 그 시간에 새 수업을 추가합니다 (기본 45분)
         </div>
       </Card>
 
@@ -1986,15 +2095,34 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
       </SectionTitle>
       <Card>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <div>
+          <div style={{ gridColumn: '1 / -1' }}>
             <div style={labelStyle}>요일</div>
             <select value={form.day} onChange={(e) => setForm({...form, day: e.target.value})} style={inputStyle}>
               {allDays.map(d => <option key={d.key} value={d.key}>{d.ko}요일</option>)}
             </select>
           </div>
           <div>
-            <div style={labelStyle}>시간</div>
-            <input type="time" value={form.time} onChange={(e) => setForm({...form, time: e.target.value})} style={inputStyle} />
+            <div style={labelStyle}>시작 시간</div>
+            <input
+              type="time"
+              step="300"
+              value={form.time}
+              onChange={(e) => handleStartChange(e.target.value)}
+              style={inputStyle}
+            />
+          </div>
+          <div>
+            <div style={labelStyle}>끝 시간</div>
+            <input
+              type="time"
+              step="300"
+              value={form.endTime}
+              onChange={(e) => setForm({...form, endTime: e.target.value})}
+              style={inputStyle}
+            />
+          </div>
+          <div style={{ gridColumn: '1 / -1', fontSize: 10, color: '#7A8E7E', marginTop: -4 }}>
+            기본 45분 수업. 5분 단위로 조정 가능. 주말 긴 일정은 끝 시간을 늘려요.
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
             <div style={labelStyle}>수업명</div>
@@ -2018,7 +2146,7 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
               <button onClick={removeItem} style={{ ...secondaryBtn, color: '#C45A3F', borderColor: 'rgba(196,90,63,0.3)' }}>
                 <Trash2 size={14} />
               </button>
-              <button onClick={() => { setEditing(null); setForm({ day: 'mon', time: '09:00', subject: '', teacher: '', room: '' }); }} style={secondaryBtn}>
+              <button onClick={() => { setEditing(null); setForm({ day: 'mon', time: '09:00', endTime: '09:45', subject: '', teacher: '', room: '' }); }} style={secondaryBtn}>
                 취소
               </button>
             </>
