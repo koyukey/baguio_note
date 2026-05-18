@@ -107,16 +107,20 @@ const MOTIVATIONS = [
   { en: "Yesterday is history, tomorrow is a mystery, today is a gift.", ko: "어제는 역사, 내일은 미스터리, 오늘은 선물.", src: "Bil Keane" },
 ];
 
-const STARTER_SCHEDULE = [
-  // 월요일 — 풀 스케줄 예시 (어학원에서 받으면 본인 시간표로 수정)
-  { day: 'mon', time: '08:00', subject: 'Speaking 1:1', teacher: 'Teacher Maria', room: 'Room 201' },
-  { day: 'mon', time: '09:00', subject: 'Reading 1:1', teacher: 'Teacher Joy', room: 'Room 203' },
-  { day: 'mon', time: '10:00', subject: 'Listening 1:1', teacher: 'Teacher Anne', room: 'Room 205' },
-  { day: 'mon', time: '11:00', subject: 'Writing 1:1', teacher: 'Teacher Sam', room: 'Room 207' },
-  { day: 'mon', time: '13:00', subject: 'Pattern Class', teacher: 'Teacher Mark', room: 'Room 105' },
-  { day: 'mon', time: '14:00', subject: 'Vocab Class', teacher: 'Teacher Eve', room: 'Room 105' },
-  { day: 'mon', time: '15:00', subject: 'CNN Class', teacher: 'Teacher Leo', room: 'Room 106' },
-  { day: 'mon', time: '16:00', subject: 'Group Class', teacher: 'Teacher Mark', room: 'Room 105' },
+const STARTER_SCHEDULE = [];
+
+// 사용자(Ryan)의 실제 화요일 시간표 — LEAP 프로그램.
+// 어학원에서 받은 종이 시간표 그대로. 다른 요일은 받으면 추가.
+const RYAN_TUE_SCHEDULE = [
+  { day: 'tue', time: '08:00', endTime: '08:45', subject: 'DISC GROUP', teacher: '', room: 'G103', floor: 'B5' },
+  { day: 'tue', time: '08:55', endTime: '09:40', subject: 'WRI GROUP', teacher: '', room: 'G103', floor: 'B5' },
+  { day: 'tue', time: '09:50', endTime: '10:35', subject: 'PRO GROUP', teacher: '', room: 'B6 LIBRARY', floor: 'B6' },
+  { day: 'tue', time: '10:45', endTime: '11:30', subject: 'ECD (E INT 1)', teacher: '', room: 'M309', floor: 'B7' },
+  { day: 'tue', time: '11:40', endTime: '12:25', subject: 'MARKET LEADER', teacher: '', room: 'G306', floor: 'B7' },
+  { day: 'tue', time: '13:30', endTime: '14:15', subject: 'CBE BOOK 2', teacher: '', room: 'M311', floor: 'B7' },
+  { day: 'tue', time: '14:25', endTime: '15:10', subject: 'CBE BOOK 1', teacher: '', room: 'G309', floor: 'B7' },
+  { day: 'tue', time: '15:20', endTime: '16:05', subject: 'GRAMMAR', teacher: '', room: 'G103', floor: 'B5' },
+  { day: 'tue', time: '16:15', endTime: '17:00', subject: 'BE PRE-JOB INT', teacher: '', room: 'G301', floor: 'B7' },
 ];
 
 const STARTER_ROUTINES = [
@@ -410,7 +414,20 @@ export default function BaguioApp() {
         } catch {}
       }
       const s = await storage.get('baguio:schedule');
-      if (s) { try { setSchedule(JSON.parse(s)); } catch {} }
+      let loadedSchedule = STARTER_SCHEDULE;
+      if (s) { try { loadedSchedule = JSON.parse(s); } catch {} }
+
+      // Ryan의 화요일 시간표 일회성 시드 — 화요일 슬롯이 비어있을 때만 추가.
+      // 다른 요일은 어학원에서 받으면 사용자가 직접 추가.
+      const tueSeedFlag = await storage.get('baguio:seeded:tue-v1');
+      if (!tueSeedFlag) {
+        const hasTue = loadedSchedule.some(x => x.day === 'tue');
+        if (!hasTue) {
+          loadedSchedule = [...loadedSchedule, ...RYAN_TUE_SCHEDULE];
+        }
+        await storage.set('baguio:seeded:tue-v1', '1');
+      }
+      setSchedule(loadedSchedule);
       const e = await storage.get('baguio:expenses');
       if (e) { try { setExpenses(JSON.parse(e)); } catch {} }
       const v = await storage.get('baguio:vocab');
@@ -1082,9 +1099,9 @@ function DashboardTab({ lang = 'ko', status, dDay, totalDays, daysIn, weekNum, t
                     <div style={{ fontWeight: 600, fontSize: 15, textDecoration: isPast ? 'line-through' : 'none' }}>
                       {c.subject || '수업'}
                     </div>
-                    {(c.teacher || c.room) && (
+                    {(c.teacher || c.room || c.floor) && (
                       <div style={{ fontSize: 11, color: '#7A8E7E', marginTop: 3 }}>
-                        {c.teacher}{c.teacher && c.room ? ' · ' : ''}{c.room}
+                        {[c.teacher, c.room, c.floor].filter(Boolean).join(' · ')}
                       </div>
                     )}
                   </div>
@@ -1779,7 +1796,7 @@ function getEndTime(cls) {
 
 function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
   const [editing, setEditing] = useState(null); // index or null
-  const [form, setForm] = useState({ day: 'mon', time: '09:00', endTime: '09:45', subject: '', teacher: '', room: '' });
+  const [form, setForm] = useState({ day: 'mon', time: '09:00', endTime: '09:45', subject: '', teacher: '', room: '', floor: '' });
 
   const allDays = [
     { key: 'mon', ko: '월', en: 'Mon' }, { key: 'tue', ko: '화', en: 'Tue' }, { key: 'wed', ko: '수', en: 'Wed' },
@@ -1829,7 +1846,7 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
     } else {
       setSchedule([...schedule, next]);
     }
-    setForm({ day: 'mon', time: '09:00', endTime: '09:45', subject: '', teacher: '', room: '' });
+    setForm({ day: 'mon', time: '09:00', endTime: '09:45', subject: '', teacher: '', room: '', floor: '' });
     setEditing(null);
   };
   const editItem = (i) => {
@@ -1841,6 +1858,7 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
       subject: s.subject || '',
       teacher: s.teacher || '',
       room: s.room || '',
+      floor: s.floor || '',
     });
     setEditing(i);
     setTimeout(() => {
@@ -1851,13 +1869,13 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
   const removeItem = () => {
     if (editing !== null) {
       setSchedule(schedule.filter((_, idx) => idx !== editing));
-      setForm({ day: 'mon', time: '09:00', endTime: '09:45', subject: '', teacher: '', room: '' });
+      setForm({ day: 'mon', time: '09:00', endTime: '09:45', subject: '', teacher: '', room: '', floor: '' });
       setEditing(null);
     }
   };
   const addAtSlot = (time, day) => {
     const endTime = minutesToTime(timeToMinutes(time) + 45);
-    setForm({ day, time, endTime, subject: '', teacher: '', room: '' });
+    setForm({ day, time, endTime, subject: '', teacher: '', room: '', floor: '' });
     setEditing(null);
     setTimeout(() => {
       const el = typeof document !== 'undefined' ? document.getElementById('schedule-editor') : null;
@@ -1995,6 +2013,8 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
                   const isEditing = editing === idx;
                   // 짧은 수업(45분 미만)은 정보 축약
                   const showTeacher = height >= 40 && s.teacher;
+                  const roomLine = [s.room, s.floor].filter(Boolean).join(' · ');
+                  const showRoom = height >= 55 && roomLine;
                   return (
                     <button
                       key={idx}
@@ -2044,6 +2064,15 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
                           whiteSpace: 'nowrap', maxWidth: '100%',
                         }}>
                           {s.teacher.replace('Teacher ', 'T. ')}
+                        </div>
+                      )}
+                      {showRoom && (
+                        <div style={{
+                          fontSize: 8, opacity: 0.85, fontWeight: 600, lineHeight: 1.1,
+                          overflow: 'hidden', textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap', maxWidth: '100%',
+                        }}>
+                          {roomLine}
                         </div>
                       )}
                     </button>
@@ -2128,13 +2157,17 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
             <div style={labelStyle}>수업명</div>
             <input value={form.subject} onChange={(e) => setForm({...form, subject: e.target.value})} placeholder="예) Speaking 1:1" style={inputStyle} />
           </div>
-          <div>
+          <div style={{ gridColumn: '1 / -1' }}>
             <div style={labelStyle}>선생님</div>
             <input value={form.teacher} onChange={(e) => setForm({...form, teacher: e.target.value})} placeholder="예: Teacher Maria" style={inputStyle} />
           </div>
           <div>
             <div style={labelStyle}>강의실</div>
-            <input value={form.room} onChange={(e) => setForm({...form, room: e.target.value})} placeholder="예: Room 201" style={inputStyle} />
+            <input value={form.room} onChange={(e) => setForm({...form, room: e.target.value})} placeholder="예: G103" style={inputStyle} />
+          </div>
+          <div>
+            <div style={labelStyle}>층</div>
+            <input value={form.floor} onChange={(e) => setForm({...form, floor: e.target.value})} placeholder="예: B5" style={inputStyle} />
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
@@ -2146,7 +2179,7 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
               <button onClick={removeItem} style={{ ...secondaryBtn, color: '#C45A3F', borderColor: 'rgba(196,90,63,0.3)' }}>
                 <Trash2 size={14} />
               </button>
-              <button onClick={() => { setEditing(null); setForm({ day: 'mon', time: '09:00', endTime: '09:45', subject: '', teacher: '', room: '' }); }} style={secondaryBtn}>
+              <button onClick={() => { setEditing(null); setForm({ day: 'mon', time: '09:00', endTime: '09:45', subject: '', teacher: '', room: '', floor: '' }); }} style={secondaryBtn}>
                 취소
               </button>
             </>
