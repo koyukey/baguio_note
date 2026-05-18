@@ -1894,15 +1894,23 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
     setForm({ ...form, time: newStart, endTime: minutesToTime(Math.min(newEndMin, 23 * 60 + 59)) });
   };
 
-  // 수업 카테고리에 따라 색상 (간단 분류)
-  const getClassColor = (subject) => {
-    const s = (subject || '').toLowerCase();
-    if (s.includes('speak')) return '#C45A3F';
-    if (s.includes('read')) return '#5C6F62';
-    if (s.includes('writ')) return '#8A5A3B';
-    if (s.includes('listen')) return '#1F3A2E';
-    if (s.includes('group') || s.includes('class')) return '#D4A53A';
-    return '#1F3A2E';
+  // 수업 카테고리에 따라 색상.
+  // 우선순위: 1) 강의실 M으로 시작 → 1:1, 2) 강의실 G로 시작 → Group,
+  // 3) 그 외엔 과목명으로 세분류 (speak/read/writ/listen/grammar/activity).
+  // 사용자 지시: 1:1인지 그룹인지 강의실로 명확히 판별되면 그게 최우선.
+  const getClassColor = (cls) => {
+    const room = (cls.room || '').trim().toUpperCase();
+    if (room.startsWith('M')) return '#7B4F8E';  // 1:1 Lesson (진보라)
+    if (room.startsWith('G')) return '#D4A53A';  // Group (황금)
+    const s = (cls.subject || '').toLowerCase();
+    if (s.includes('speak')) return '#C45A3F';   // Speaking (진주황)
+    if (s.includes('read')) return '#5C6F62';    // Reading (회녹)
+    if (s.includes('writ')) return '#8A5A3B';    // Writing (갈색)
+    if (s.includes('listen')) return '#1F3A2E';  // Listening (진녹)
+    if (s.includes('grammar')) return '#3B6B8A'; // Grammar (블루그레이)
+    if (s.includes('activity') || s.includes('activ')) return '#D17B3A'; // Activity (밝은주황)
+    if (s.includes('group') || s.includes('class')) return '#D4A53A'; // Group fallback
+    return '#1F3A2E'; // 기본 진녹
   };
 
   return (
@@ -2009,7 +2017,7 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
                   const endMin = timeToMinutes(getEndTime(s));
                   const top = (startMin - gridStartMin) * PIXELS_PER_MIN;
                   const height = Math.max((endMin - startMin) * PIXELS_PER_MIN, 18);
-                  const bg = getClassColor(s.subject);
+                  const bg = getClassColor(s);
                   const isEditing = editing === idx;
                   // 짧은 수업(45분 미만)은 정보 축약
                   const showTeacher = height >= 40 && s.teacher;
@@ -2103,11 +2111,14 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
           marginTop: 10, fontSize: 10, color: '#5C6F62'
         }}>
           {[
+            { label: '1:1 (M room)', color: '#7B4F8E' },
+            { label: 'Group (G room)', color: '#D4A53A' },
             { label: 'Speaking', color: '#C45A3F' },
             { label: 'Reading', color: '#5C6F62' },
             { label: 'Writing', color: '#8A5A3B' },
             { label: 'Listening', color: '#1F3A2E' },
-            { label: 'Group', color: '#D4A53A' },
+            { label: 'Grammar', color: '#3B6B8A' },
+            { label: 'Activity', color: '#D17B3A' },
           ].map(item => (
             <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ width: 8, height: 8, borderRadius: 2, background: item.color }} />
