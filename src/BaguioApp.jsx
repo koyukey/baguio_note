@@ -343,6 +343,10 @@ function RefreshButton({ lang }) {
 export default function BaguioApp() {
   const [tab, setTab] = useState('home');
   const [loaded, setLoaded] = useState(false);
+  // 몰입 모드 — 글 읽기 화면에서 헤더·탭바를 숨겨 전체화면처럼 보이게
+  const [immersive, setImmersive] = useState(false);
+  // 탭이 바뀌면 몰입 모드 해제 (글 읽기 화면을 벗어난 것이므로)
+  useEffect(() => { setImmersive(false); }, [tab]);
 
   // 언어 (ko | en)
   const [lang, setLang] = useState('ko');
@@ -611,7 +615,14 @@ export default function BaguioApp() {
       {/* ============================================================
           헤더
       ============================================================ */}
-      <header style={{ padding: '28px 24px 12px', position: 'relative', zIndex: 2 }}>
+      <header style={{
+        padding: immersive ? '0 24px' : '28px 24px 12px',
+        position: 'relative', zIndex: 2,
+        maxHeight: immersive ? 0 : 600,
+        opacity: immersive ? 0 : 1,
+        overflow: 'hidden',
+        transition: 'max-height 0.3s ease, opacity 0.25s ease, padding 0.3s ease',
+      }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: '11px', letterSpacing: '0.2em', color: '#7A8E7E', fontWeight: 500, marginBottom: 4 }}>
@@ -717,6 +728,7 @@ export default function BaguioApp() {
             vocab={vocab} setVocab={setVocab}
             articles={articles} setArticles={setArticles}
             diaries={diaries} setDiaries={setDiaries}
+            setImmersive={setImmersive}
           />
         )}
       </main>
@@ -732,7 +744,11 @@ export default function BaguioApp() {
         display: 'flex',
         justifyContent: 'space-around',
         zIndex: 50,
-        boxShadow: '0 10px 30px rgba(31,58,46,0.25)'
+        boxShadow: '0 10px 30px rgba(31,58,46,0.25)',
+        // 몰입 모드: 탭바를 화면 아래로 슬라이드해서 숨김
+        transform: immersive ? 'translateY(140%)' : 'translateY(0)',
+        opacity: immersive ? 0 : 1,
+        transition: 'transform 0.3s ease, opacity 0.25s ease',
       }}>
         {[
           { key: 'home', icon: Compass, label: lang === 'ko' ? '홈' : 'Home' },
@@ -2684,10 +2700,16 @@ function ensureKoEnOrder(pair) {
   return pair;
 }
 
-function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpenId, onPendingOpenConsumed }) {
+function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpenId, onPendingOpenConsumed, onDetailViewChange = () => {} }) {
   const t = (ko, en) => lang === 'ko' ? ko : en;
   const [view, setView] = useState('list'); // list | add | detail
   const [openId, setOpenId] = useState(null);
+
+  // 상세 보기(detail) 진입/이탈을 부모에 알림 — 몰입 모드 토글용
+  useEffect(() => {
+    onDetailViewChange(view === 'detail');
+    return () => onDetailViewChange(false);
+  }, [view, onDetailViewChange]);
 
   // 외부에서 "이 일기 열어"라는 신호가 오면 자동으로 detail view로
   useEffect(() => {
@@ -2744,10 +2766,17 @@ function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpe
     if (!d) { setView('list'); setOpenId(null); return null; }
     return (
       <>
-        <button onClick={() => { setView('list'); setOpenId(null); }} style={{
-          background: 'none', border: 'none', color: '#7A8E7E', fontSize: 12,
-          marginBottom: 8, cursor: 'pointer', padding: 0,
-        }}>← {t('목록으로', 'Back to list')}</button>
+        {/* 몰입 모드라 탭바가 없으므로, 뒤로가기를 sticky로 항상 보이게 */}
+        <div style={{
+          position: 'sticky', top: 0, zIndex: 10,
+          padding: '8px 0',
+          background: 'linear-gradient(#F5EFE0 70%, rgba(245,239,224,0))',
+        }}>
+          <button onClick={() => { setView('list'); setOpenId(null); }} style={{
+            background: 'none', border: 'none', color: '#7A8E7E', fontSize: 12,
+            cursor: 'pointer', padding: 0,
+          }}>← {t('목록으로', 'Back to list')}</button>
+        </div>
         <SectionTitle kicker={d.date}>{d.title}</SectionTitle>
 
         {/* 본문 페어들 — 표시 시점에 한 번 더 한·영 자동 분류 (이전에 뒤집혀 저장된 일기도 바로잡음) */}
@@ -2979,7 +3008,7 @@ function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpe
   );
 }
 
-function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diaries = [], setDiaries = () => {} }) {
+function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diaries = [], setDiaries = () => {}, setImmersive = () => {} }) {
   const t = (ko, en) => lang === 'ko' ? ko : en;
   const [section, setSection] = useState('phrases'); // phrases | writing | diary
   const [showLearned, setShowLearned] = useState(false); // Phrases: 외운 것 보기 토글
@@ -3003,6 +3032,23 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
   const [viewingId, setViewingId] = useState(null); // null | <id>          — 읽기 전용 보기
   const [draftTitle, setDraftTitle] = useState('');
   const [draftContent, setDraftContent] = useState('');
+
+  // 일기 상세 보기 여부 — DiarySection이 콜백으로 알려줌
+  const [diaryDetailOpen, setDiaryDetailOpen] = useState(false);
+
+  // 서브탭이 바뀌면 읽기 상태 초기화 (diary 상세에서 phrases로 이동 등)
+  useEffect(() => {
+    if (section !== 'diary') setDiaryDetailOpen(false);
+    if (section !== 'writing') setViewingId(null);
+  }, [section]);
+
+  // 글 읽기 화면(Writing 읽기 보기 OR Diary 상세)에 들어가면 몰입 모드 ON.
+  // 화면 벗어나면 OFF. 컴포넌트 언마운트(탭 이동) 시에도 안전하게 해제.
+  useEffect(() => {
+    const reading = viewingId !== null || diaryDetailOpen;
+    setImmersive(reading);
+    return () => setImmersive(false);
+  }, [viewingId, diaryDetailOpen, setImmersive]);
 
   const cats = ['전체', ...new Set(vocab.map(v => v.cat))];
   // 카테고리 + 외운 것 토글 필터
@@ -3344,9 +3390,15 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
         if (!article) { setViewingId(null); return null; }
         return (
           <>
-            <div style={{ marginBottom: 4 }}>
+            {/* 몰입 모드라 탭바가 없으므로, 뒤로가기를 sticky로 항상 보이게 */}
+            <div style={{
+              position: 'sticky', top: 0, zIndex: 10,
+              padding: '8px 0',
+              background: 'linear-gradient(#F5EFE0 70%, rgba(245,239,224,0))',
+              marginBottom: 4,
+            }}>
               <button onClick={() => setViewingId(null)} style={{
-                ...btnLink, color: '#5C6F62', marginBottom: 8
+                ...btnLink, color: '#5C6F62',
               }}>
                 ← 목록으로
               </button>
@@ -3455,6 +3507,7 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
           deleteDiary={deleteDiary}
           pendingOpenId={pendingDiaryOpen}
           onPendingOpenConsumed={() => setPendingDiaryOpen(null)}
+          onDetailViewChange={setDiaryDetailOpen}
         />
       )}
     </>
