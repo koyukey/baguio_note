@@ -2999,7 +2999,8 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
   const [newCard, setNewCard] = useState({ cat: '교실', en: '', ko: '' });
 
   // 글쓰기 (writing) 상태
-  const [editingId, setEditingId] = useState(null); // null | 'new' | <id>
+  const [editingId, setEditingId] = useState(null); // null | 'new' | <id>  — 편집 모드
+  const [viewingId, setViewingId] = useState(null); // null | <id>          — 읽기 전용 보기
   const [draftTitle, setDraftTitle] = useState('');
   const [draftContent, setDraftContent] = useState('');
 
@@ -3053,11 +3054,18 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
   // 글쓰기 핸들러
   const startNewArticle = () => {
     setEditingId('new');
+    setViewingId(null);
     setDraftTitle('');
     setDraftContent('');
   };
+  // 목록에서 글을 누르면 먼저 '읽기 보기'로 (편집은 거기서 한 번 더)
+  const viewArticle = (article) => {
+    setViewingId(article.id);
+    setEditingId(null);
+  };
   const startEditArticle = (article) => {
     setEditingId(article.id);
+    setViewingId(null);
     setDraftTitle(article.title);
     setDraftContent(article.content);
   };
@@ -3087,6 +3095,7 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
     if (typeof window !== 'undefined' && window.confirm('이 글을 삭제할까요?')) {
       setArticles(articles.filter(a => a.id !== id));
       setEditingId(null);
+      setViewingId(null);
     }
   };
 
@@ -3276,8 +3285,8 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
         </>
       )}
 
-      {/* ===== 글쓰기 섹션 ===== */}
-      {section === 'writing' && editingId === null && (
+      {/* ===== 글쓰기 섹션 — 목록 ===== */}
+      {section === 'writing' && editingId === null && viewingId === null && (
         <>
           <button onClick={startNewArticle} style={{
             ...primaryBtn, width: '100%', justifyContent: 'center',
@@ -3302,7 +3311,7 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
           ) : (
             <Card style={{ padding: 4 }}>
               {articles.map((a, i) => (
-                <div key={a.id} onClick={() => startEditArticle(a)} style={{
+                <div key={a.id} onClick={() => viewArticle(a)} style={{
                   padding: '14px',
                   cursor: 'pointer',
                   borderBottom: i < articles.length - 1 ? '1px dashed rgba(31,58,46,0.1)' : 'none'
@@ -3328,6 +3337,49 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
           )}
         </>
       )}
+
+      {/* 글쓰기 — 읽기 전용 보기 (글 전체를 길이 제한 없이 표시) */}
+      {section === 'writing' && viewingId !== null && (() => {
+        const article = articles.find(a => a.id === viewingId);
+        if (!article) { setViewingId(null); return null; }
+        return (
+          <>
+            <div style={{ marginBottom: 4 }}>
+              <button onClick={() => setViewingId(null)} style={{
+                ...btnLink, color: '#5C6F62', marginBottom: 8
+              }}>
+                ← 목록으로
+              </button>
+            </div>
+            <div className="display" style={{
+              fontSize: 24, fontWeight: 600, lineHeight: 1.3,
+              letterSpacing: '-0.01em', marginBottom: 6, color: '#1F3A2E',
+            }}>
+              {article.title}
+            </div>
+            <div style={{ fontSize: 10, color: '#A8B8AB', letterSpacing: '0.05em', marginBottom: 14 }}>
+              {formatRelativeTime(article.updatedAt)}
+            </div>
+            <Card style={{ padding: 20 }}>
+              {/* 줄바꿈을 그대로 살려서 글 전체 표시 — 길이 제한 없음 */}
+              <div style={{
+                fontSize: 15, lineHeight: 1.85, color: '#1F3A2E',
+                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              }}>
+                {article.content || <span style={{ color: '#A8B8AB' }}>내용이 없어요.</span>}
+              </div>
+            </Card>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button onClick={() => startEditArticle(article)} style={{ ...primaryBtn, flex: 1, justifyContent: 'center' }}>
+                <Pencil size={14} /> 수정
+              </button>
+              <button onClick={() => deleteArticle(article.id)} style={{ ...secondaryBtn, color: '#C45A3F', borderColor: 'rgba(196,90,63,0.3)' }}>
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </>
+        );
+      })()}
 
       {/* 글쓰기 — 에디터 */}
       {section === 'writing' && editingId !== null && (
@@ -3356,15 +3408,27 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
           <Card>
             <textarea
               value={draftContent}
-              onChange={(e) => setDraftContent(e.target.value)}
+              onChange={(e) => {
+                setDraftContent(e.target.value);
+                // 입력하면서 높이 자동 확장
+                e.target.style.height = 'auto';
+                e.target.style.height = Math.max(e.target.scrollHeight, 280) + 'px';
+              }}
               placeholder="기사 요약, 새 표현 정리, 관심사 자유 작성…&#10;&#10;영어로 써도, 한국어로 써도 좋아요."
+              ref={(el) => {
+                // 편집 모드 진입 시 기존 글 길이에 맞춰 즉시 펼침
+                if (el) {
+                  el.style.height = 'auto';
+                  el.style.height = Math.max(el.scrollHeight, 280) + 'px';
+                }
+              }}
               style={{
                 width: '100%', minHeight: 280,
-                border: 'none', resize: 'vertical',
+                border: 'none', resize: 'none', overflow: 'hidden',
                 background: 'transparent',
-                fontFamily: 'inherit', fontSize: 14,
+                fontFamily: 'inherit', fontSize: 15,
                 color: '#1F3A2E', outline: 'none',
-                lineHeight: 1.75
+                lineHeight: 1.85, boxSizing: 'border-box'
               }}
             />
           </Card>
