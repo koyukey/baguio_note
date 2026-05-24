@@ -13,7 +13,7 @@ const COLUMN_MAP = {
   'baguio:diaries': 'diaries',
 };
 // 시드 플래그 등 메타 키 — localStorage에만 저장하고 Supabase에는 안 올림
-const LOCAL_ONLY_KEYS = new Set(['baguio:seeded:diary-v1', 'baguio:seeded:tue-v1']);
+const LOCAL_ONLY_KEYS = new Set(['baguio:seeded:diary-v1', 'baguio:seeded:tue-v1', 'baguio:seeded:week-v2']);
 
 // 컬럼별 타임스탬프를 로컬에 저장하는 키 접두사
 const TS_PREFIX = 'baguio:_ts:';

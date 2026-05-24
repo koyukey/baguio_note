@@ -109,19 +109,23 @@ const MOTIVATIONS = [
 
 const STARTER_SCHEDULE = [];
 
-// 사용자(Ryan)의 실제 화요일 시간표 — LEAP 프로그램.
-// 어학원에서 받은 종이 시간표 그대로. 다른 요일은 받으면 추가.
-const RYAN_TUE_SCHEDULE = [
-  { day: 'tue', time: '08:00', endTime: '08:45', subject: 'DISC GROUP', teacher: '', room: 'G103', floor: 'B5' },
-  { day: 'tue', time: '08:55', endTime: '09:40', subject: 'WRI GROUP', teacher: '', room: 'G103', floor: 'B5' },
-  { day: 'tue', time: '09:50', endTime: '10:35', subject: 'PRO GROUP', teacher: '', room: 'B6 LIBRARY', floor: 'B6' },
-  { day: 'tue', time: '10:45', endTime: '11:30', subject: 'ECD (E INT 1)', teacher: '', room: 'M309', floor: 'B7' },
-  { day: 'tue', time: '11:40', endTime: '12:25', subject: 'MARKET LEADER', teacher: '', room: 'G306', floor: 'B7' },
-  { day: 'tue', time: '13:30', endTime: '14:15', subject: 'CBE BOOK 2', teacher: '', room: 'M311', floor: 'B7' },
-  { day: 'tue', time: '14:25', endTime: '15:10', subject: 'CBE BOOK 1', teacher: '', room: 'G309', floor: 'B7' },
-  { day: 'tue', time: '15:20', endTime: '16:05', subject: 'GRAMMAR', teacher: '', room: 'G103', floor: 'B5' },
-  { day: 'tue', time: '16:15', endTime: '17:00', subject: 'BE PRE-JOB INT', teacher: '', room: 'G301', floor: 'B7' },
+// 사용자(Ryan)의 실제 시간표 — LEAP 프로그램.
+// 어학원에서 받은 종이 시간표 기반. 월~금 동일 슬롯으로 일단 채움.
+// (저녁에 사용자가 요일별 차이를 알려주면 그때 다시 정리)
+const RYAN_DAILY_TEMPLATE = [
+  { time: '08:00', endTime: '08:45', subject: 'DISC GROUP', teacher: '', room: 'G103', floor: 'B5' },
+  { time: '08:55', endTime: '09:40', subject: 'WRI GROUP', teacher: '', room: 'G103', floor: 'B5' },
+  { time: '09:50', endTime: '10:35', subject: 'PRO GROUP', teacher: '', room: 'B6 LIBRARY', floor: 'B6' },
+  { time: '10:45', endTime: '11:30', subject: 'ECD (E INT 1)', teacher: '', room: 'M309', floor: 'B7' },
+  { time: '11:40', endTime: '12:25', subject: 'MARKET LEADER', teacher: '', room: 'G306', floor: 'B7' },
+  { time: '13:30', endTime: '14:15', subject: 'CBE BOOK 2', teacher: '', room: 'M311', floor: 'B7' },
+  { time: '14:25', endTime: '15:10', subject: 'CBE BOOK 1', teacher: '', room: 'G309', floor: 'B7' },
+  { time: '15:20', endTime: '16:05', subject: 'GRAMMAR', teacher: '', room: 'G103', floor: 'B5' },
+  { time: '16:15', endTime: '17:00', subject: 'BE PRE-JOB INT', teacher: '', room: 'G301', floor: 'B7' },
 ];
+const RYAN_WEEK_SCHEDULE = ['mon', 'tue', 'wed', 'thu', 'fri'].flatMap(day =>
+  RYAN_DAILY_TEMPLATE.map(slot => ({ day, ...slot }))
+);
 
 const STARTER_ROUTINES = [
   { id: 'r-seed-1', name: '단어 20개 외우기', history: {} },
@@ -421,15 +425,15 @@ export default function BaguioApp() {
       let loadedSchedule = STARTER_SCHEDULE;
       if (s) { try { loadedSchedule = JSON.parse(s); } catch {} }
 
-      // Ryan의 화요일 시간표 일회성 시드 — 화요일 슬롯이 비어있을 때만 추가.
-      // 다른 요일은 어학원에서 받으면 사용자가 직접 추가.
-      const tueSeedFlag = await storage.get('baguio:seeded:tue-v1');
-      if (!tueSeedFlag) {
-        const hasTue = loadedSchedule.some(x => x.day === 'tue');
-        if (!hasTue) {
-          loadedSchedule = [...loadedSchedule, ...RYAN_TUE_SCHEDULE];
-        }
-        await storage.set('baguio:seeded:tue-v1', '1');
+      // Ryan의 시간표 일회성 시드 — 월~금 같은 슬롯으로 채움.
+      // v2: 기존 v1(화요일만 있던 버전)을 덮어쓰고 월~금 5일치로 재설정.
+      // 안전장치: 월~금 외 요일(토·일)에 사용자가 직접 추가한 수업은 보존.
+      const weekSeedFlag = await storage.get('baguio:seeded:week-v2');
+      if (!weekSeedFlag) {
+        const weekdays = new Set(['mon', 'tue', 'wed', 'thu', 'fri']);
+        const preserved = loadedSchedule.filter(x => !weekdays.has(x.day));
+        loadedSchedule = [...preserved, ...RYAN_WEEK_SCHEDULE];
+        await storage.set('baguio:seeded:week-v2', '1');
       }
       setSchedule(loadedSchedule);
       const e = await storage.get('baguio:expenses');
