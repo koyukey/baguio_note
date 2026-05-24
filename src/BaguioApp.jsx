@@ -1845,10 +1845,28 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
     ['mon','tue','wed','thu','fri'].includes(d.key) || usedDayKeys.has(d.key)
   );
 
-  // 오늘 요일 (하이라이트용)
+  // 오늘 요일 (기본 선택값 + 하이라이트용)
   const todayJsDay = new Date().getDay(); // 0=일, 1=월…
   const jsDayToKey = { 0:'sun', 1:'mon', 2:'tue', 3:'wed', 4:'thu', 5:'fri', 6:'sat' };
   const todayDayKey = jsDayToKey[todayJsDay];
+
+  // 보고 있는 요일 — 기본은 오늘. 주말이면 월요일로.
+  const defaultDay = visibleDays.some(d => d.key === todayDayKey) ? todayDayKey : 'mon';
+  const [selectedDay, setSelectedDay] = useState(defaultDay);
+
+  // 이번 주의 각 요일 날짜 계산 (월~일) — 토글 옆에 "5/25" 식으로 표시
+  const today = new Date();
+  const todayJsDay2 = today.getDay(); // 0=일
+  // 이번 주 월요일을 기준일로
+  const mondayOffset = todayJsDay2 === 0 ? -6 : 1 - todayJsDay2;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() + mondayOffset);
+  const dayKeyToDate = {};
+  ['mon','tue','wed','thu','fri','sat','sun'].forEach((k, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    dayKeyToDate[k] = `${d.getMonth() + 1}/${d.getDate()}`;
+  });
 
   // 30분 단위 그리드 — 기본 08:00 ~ 18:00.
   // 데이터가 그 범위 바깥(예: 07:30 시작, 20:00 끝)이면 범위 자동 확장.
@@ -1971,194 +1989,218 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
 
   return (
     <>
-      <SectionTitle kicker="WEEKLY">{lang === 'ko' ? '시간표' : 'Schedule'}</SectionTitle>
+      <SectionTitle kicker="DAILY">{lang === 'ko' ? '시간표' : 'Schedule'}</SectionTitle>
       <div style={{ fontSize: 11, color: '#7A8E7E', marginTop: -4, marginBottom: 10 }}>
         {lang === 'ko'
-          ? '수업 칸을 탭하면 수정, 빈 칸을 탭하면 그 시간에 새 수업을 추가합니다.'
-          : 'Tap a class to edit, tap an empty slot to add a new class.'}
+          ? '요일을 골라 하루 일정을 봅니다. 수업 카드를 탭하면 수정.'
+          : 'Pick a day to see classes. Tap a card to edit.'}
       </div>
 
-      {/* ===== 한 주 그리드 ===== */}
-      <Card style={{ padding: 8 }}>
-        {/* 요일 헤더 */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: `26px repeat(${visibleDays.length}, 1fr)`,
-          gap: 3, marginBottom: 4
-        }}>
-          <div />
-          {visibleDays.map(d => {
-            const isToday = d.key === todayDayKey;
-            return (
-              <div key={d.key} style={{
-                textAlign: 'center',
-                fontSize: 11,
-                fontWeight: isToday ? 800 : 700,
-                color: isToday ? '#C45A3F' : '#1F3A2E',
-                padding: '6px 0 4px',
-                borderBottom: isToday ? '2px solid #C45A3F' : '2px solid transparent'
+      {/* ===== 요일 토글 (가로 스크롤 가능) ===== */}
+      <div style={{
+        display: 'flex',
+        gap: 6,
+        marginBottom: 14,
+        overflowX: 'auto',
+        paddingBottom: 4,
+        WebkitOverflowScrolling: 'touch',
+      }} className="scrollbar-hidden">
+        {visibleDays.map(d => {
+          const isToday = d.key === todayDayKey;
+          const isSelected = d.key === selectedDay;
+          return (
+            <button
+              key={d.key}
+              onClick={() => setSelectedDay(d.key)}
+              style={{
+                flex: '0 0 auto',
+                minWidth: 56,
+                padding: '8px 12px',
+                borderRadius: 10,
+                border: 'none',
+                background: isSelected ? '#1F3A2E' : 'rgba(31,58,46,0.06)',
+                color: isSelected ? '#F5EFE0' : '#1F3A2E',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 2,
+                fontFamily: 'inherit',
+                transition: 'background 0.15s',
+              }}
+            >
+              <span style={{
+                fontSize: 13,
+                fontWeight: isSelected ? 800 : 700,
+                letterSpacing: '0.02em',
               }}>
                 {lang === 'ko' ? d.ko : d.en}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* 30분 단위 그리드 + 카드 절대 위치 (실제 길이대로 늘어남) */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: `26px repeat(${visibleDays.length}, 1fr)`,
-          gap: 3,
-          position: 'relative',
-        }}>
-          {/* 왼쪽 시간 레이블 컬럼 */}
-          <div style={{ position: 'relative' }}>
-            {slotTimes.map((min, i) => (
-              <div key={min} className="display" style={{
-                height: SLOT_HEIGHT,
-                fontSize: 9,
-                color: '#7A8E7E',
-                fontWeight: 700,
-                textAlign: 'right',
-                paddingRight: 2,
-                letterSpacing: '-0.02em',
-                // 정시(00분)만 진하게, 30분은 흐리게
-                opacity: min % 60 === 0 ? 1 : 0.45,
-                lineHeight: '12px',
+              </span>
+              <span style={{
+                fontSize: 10,
+                opacity: isSelected ? 0.85 : 0.6,
+                fontWeight: 600,
+                color: isToday && !isSelected ? '#C45A3F' : 'inherit',
               }}>
-                {min % 60 === 0 ? minutesToTime(min) : ''}
+                {dayKeyToDate[d.key] || ''}
+                {isToday ? (lang === 'ko' ? ' · 오늘' : ' · today') : ''}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ===== 선택된 요일 수업 목록 (큰 카드) ===== */}
+      {(() => {
+        const dayClasses = schedule
+          .map((s, idx) => ({ s, idx }))
+          .filter(({ s }) => s.day === selectedDay)
+          .sort((a, b) => timeToMinutes(a.s.time) - timeToMinutes(b.s.time));
+
+        if (dayClasses.length === 0) {
+          return (
+            <Card>
+              <div style={{ textAlign: 'center', padding: '28px 16px', color: '#7A8E7E' }}>
+                <CalendarDays size={26} style={{ marginBottom: 10, opacity: 0.5 }} />
+                <div className="display-italic" style={{ fontSize: 16, marginBottom: 6 }}>
+                  {lang === 'ko' ? '이 날은 수업이 없어요.' : 'No classes on this day.'}
+                </div>
+                <div style={{ fontSize: 11 }}>
+                  {lang === 'ko' ? '아래 폼에서 직접 추가할 수 있어요.' : 'Use the form below to add one.'}
+                </div>
               </div>
-            ))}
-          </div>
+            </Card>
+          );
+        }
 
-          {/* 각 요일 컬럼 */}
-          {visibleDays.map(d => {
-            const isToday = d.key === todayDayKey;
-            // 이 요일의 수업들
-            const dayClasses = schedule
-              .map((s, idx) => ({ s, idx }))
-              .filter(({ s }) => s.day === d.key);
+        // 현재 시각 — 선택된 요일이 오늘일 때만 NOW 배지 표시
+        const nowMin = (() => {
+          const n = new Date();
+          return n.getHours() * 60 + n.getMinutes();
+        })();
+        const isViewingToday = selectedDay === todayDayKey;
 
-            return (
-              <div key={d.key} style={{
-                position: 'relative',
-                background: isToday ? 'rgba(196,90,63,0.04)' : 'transparent',
-                borderRadius: 6,
-              }}>
-                {/* 빈 슬롯들 (배경 — 클릭으로 추가) */}
-                {slotTimes.map((min) => {
-                  const time = minutesToTime(min);
-                  return (
-                    <button key={min} onClick={() => addAtSlot(time, d.key)} style={{
-                      position: 'absolute',
-                      top: ((min - gridStartMin) * PIXELS_PER_MIN),
-                      left: 0,
-                      right: 0,
-                      height: SLOT_HEIGHT,
-                      background: 'transparent',
-                      border: 'none',
-                      borderTop: min % 60 === 0
-                        ? '1px solid rgba(31,58,46,0.1)'
-                        : '1px dashed rgba(31,58,46,0.06)',
-                      cursor: 'pointer',
-                      padding: 0,
-                      fontFamily: 'inherit',
-                    }} aria-label={`${time} ${d.ko}요일에 추가`} />
-                  );
-                })}
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {dayClasses.map(({ s, idx }) => {
+              const startMin = timeToMinutes(s.time);
+              const endMin = timeToMinutes(getEndTime(s));
+              const isPast = isViewingToday && endMin < nowMin;
+              const isNow = isViewingToday && startMin <= nowMin && endMin >= nowMin;
+              const isEditing = editing === idx;
+              const bg = getClassColor(s);
+              const roomLine = [s.room, s.floor].filter(Boolean).join(' · ');
 
-                {/* 수업 카드 — 절대 위치 */}
-                {dayClasses.map(({ s, idx }) => {
-                  const startMin = timeToMinutes(s.time);
-                  const endMin = timeToMinutes(getEndTime(s));
-                  const top = (startMin - gridStartMin) * PIXELS_PER_MIN;
-                  const height = Math.max((endMin - startMin) * PIXELS_PER_MIN, 18);
-                  const bg = getClassColor(s);
-                  const isEditing = editing === idx;
-                  // 짧은 수업(45분 미만)은 정보 축약
-                  const showTeacher = height >= 40 && s.teacher;
-                  const roomLine = [s.room, s.floor].filter(Boolean).join(' · ');
-                  const showRoom = height >= 55 && roomLine;
-                  return (
-                    <button
-                      key={idx}
-                      onClick={(e) => { e.stopPropagation(); editItem(idx); }}
-                      style={{
-                        position: 'absolute',
-                        top: top + 1,
-                        left: 1,
-                        right: 1,
-                        height: height - 2,
-                        background: bg,
-                        color: '#F5EFE0',
-                        border: isEditing ? '2px solid #F5EFE0' : 'none',
-                        outline: isEditing ? `2px solid ${bg}` : 'none',
-                        borderRadius: 5,
-                        padding: '3px 4px',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'flex-start',
-                        alignItems: 'flex-start',
-                        textAlign: 'left',
-                        gap: 1,
-                        overflow: 'hidden',
-                        fontFamily: 'inherit',
-                        zIndex: 2,
-                      }}
-                    >
-                      <div style={{ fontSize: 8, opacity: 0.75, fontWeight: 600, letterSpacing: '0.02em', lineHeight: 1 }}>
-                        {s.time}–{getEndTime(s)}
-                      </div>
-                      <div style={{
-                        fontSize: 10, fontWeight: 700, lineHeight: 1.15,
-                        overflow: 'hidden',
-                        display: '-webkit-box',
-                        WebkitLineClamp: height < 35 ? 1 : 2,
-                        WebkitBoxOrient: 'vertical',
-                        wordBreak: 'break-word',
-                        width: '100%',
+              return (
+                <button
+                  key={idx}
+                  onClick={() => editItem(idx)}
+                  style={{
+                    position: 'relative',
+                    display: 'flex',
+                    alignItems: 'stretch',
+                    width: '100%',
+                    padding: 0,
+                    background: '#FFFFFF',
+                    border: isEditing ? `2px solid ${bg}` : '1px solid rgba(31,58,46,0.12)',
+                    borderRadius: 12,
+                    overflow: 'hidden',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    textAlign: 'left',
+                    opacity: isPast ? 0.45 : 1,
+                    boxShadow: isNow ? '0 4px 14px rgba(196,90,63,0.18)' : '0 1px 2px rgba(31,58,46,0.04)',
+                    transition: 'opacity 0.2s, box-shadow 0.2s',
+                  }}
+                >
+                  {/* 좌측 카테고리 색 바 */}
+                  <div style={{ width: 6, background: bg, flexShrink: 0 }} />
+
+                  {/* 카드 본문 */}
+                  <div style={{ flex: 1, padding: '14px 16px', minWidth: 0 }}>
+                    {/* 상단 — 시간 + NOW 배지 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <span className="display" style={{
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: isPast ? '#7A8E7E' : '#1F3A2E',
+                        letterSpacing: '-0.01em',
                       }}>
-                        {s.subject}
+                        {s.time}–{getEndTime(s)}
+                      </span>
+                      {isNow && (
+                        <span style={{
+                          fontSize: 9,
+                          padding: '2px 7px',
+                          borderRadius: 4,
+                          background: '#C45A3F',
+                          color: '#F5EFE0',
+                          letterSpacing: '0.1em',
+                          fontWeight: 700,
+                        }}>NOW</span>
+                      )}
+                    </div>
+
+                    {/* 코스명 — 가장 큰 글씨 */}
+                    <div className="display" style={{
+                      fontSize: 17,
+                      fontWeight: 700,
+                      color: '#1F3A2E',
+                      lineHeight: 1.25,
+                      letterSpacing: '-0.01em',
+                      textDecoration: isPast ? 'line-through' : 'none',
+                      wordBreak: 'break-word',
+                    }}>
+                      {s.subject || (lang === 'ko' ? '(이름 없음)' : '(no name)')}
+                    </div>
+
+                    {/* 강의실 + 층 */}
+                    {roomLine && (
+                      <div style={{
+                        fontSize: 12,
+                        color: '#5C6F62',
+                        marginTop: 6,
+                        fontWeight: 600,
+                      }}>
+                        📍 {roomLine}
                       </div>
-                      {showTeacher && (
-                        <div style={{
-                          fontSize: 8, opacity: 0.7, lineHeight: 1.1,
-                          overflow: 'hidden', textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap', maxWidth: '100%',
-                        }}>
-                          {s.teacher.replace('Teacher ', 'T. ')}
-                        </div>
-                      )}
-                      {showRoom && (
-                        <div style={{
-                          fontSize: 8, opacity: 0.85, fontWeight: 600, lineHeight: 1.1,
-                          overflow: 'hidden', textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap', maxWidth: '100%',
-                        }}>
-                          {roomLine}
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
+                    )}
 
-                {/* 컬럼 높이 확보용 spacer */}
-                <div style={{ height: totalSlots * SLOT_HEIGHT, pointerEvents: 'none' }} />
-              </div>
-            );
-          })}
-        </div>
+                    {/* 선생님 */}
+                    {s.teacher && (
+                      <div style={{
+                        fontSize: 12,
+                        color: '#7A8E7E',
+                        marginTop: 3,
+                      }}>
+                        👤 {s.teacher}
+                      </div>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
 
-        {/* 새 시간대 추가 힌트 */}
-        <div style={{
-          marginTop: 8, paddingTop: 8,
-          borderTop: '1px dashed rgba(31,58,46,0.1)',
-          fontSize: 10, color: '#A8B8AB', textAlign: 'center'
-        }}>
-          빈 시간을 탭하면 그 시간에 새 수업을 추가합니다 (기본 45분)
-        </div>
-      </Card>
+            {/* 빈 슬롯 새 수업 추가 버튼 */}
+            <button
+              onClick={() => addAtSlot('09:00', selectedDay)}
+              style={{
+                padding: '12px',
+                background: 'transparent',
+                border: '1px dashed rgba(31,58,46,0.2)',
+                borderRadius: 10,
+                color: '#7A8E7E',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              + {lang === 'ko' ? '이 날에 수업 추가' : 'Add class to this day'}
+            </button>
+          </div>
+        );
+      })()}
 
       {/* ===== 수업 카테고리 범례 ===== */}
       {schedule.length > 0 && (
