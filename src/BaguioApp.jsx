@@ -118,6 +118,7 @@ const RYAN_DAILY_TEMPLATE = [
   { time: '09:50', endTime: '10:35', subject: 'PRO GROUP', teacher: '', room: 'B6 LIBRARY', floor: 'B6' },
   { time: '10:45', endTime: '11:30', subject: 'ECD (E INT 1)', teacher: '', room: 'M309', floor: 'B7' },
   { time: '11:40', endTime: '12:25', subject: 'MARKET LEADER', teacher: '', room: 'G306', floor: 'B7' },
+  { time: '12:35', endTime: '13:20', subject: 'LUNCH BREAK', teacher: '', room: '', floor: '', category: 'lunch' },
   { time: '13:30', endTime: '14:15', subject: 'CBE BOOK 2', teacher: '', room: 'M311', floor: 'B7' },
   { time: '14:25', endTime: '15:10', subject: 'CBE BOOK 1', teacher: '', room: 'G309', floor: 'B7' },
   { time: '15:20', endTime: '16:05', subject: 'GRAMMAR', teacher: '', room: 'G103', floor: 'B5' },
@@ -426,14 +427,14 @@ export default function BaguioApp() {
       if (s) { try { loadedSchedule = JSON.parse(s); } catch {} }
 
       // Ryan의 시간표 일회성 시드 — 월~금 같은 슬롯으로 채움.
-      // v2: 기존 v1(화요일만 있던 버전)을 덮어쓰고 월~금 5일치로 재설정.
+      // v3: lunch break(12:35~13:20) 추가. 평일 데이터 재설정.
       // 안전장치: 월~금 외 요일(토·일)에 사용자가 직접 추가한 수업은 보존.
-      const weekSeedFlag = await storage.get('baguio:seeded:week-v2');
+      const weekSeedFlag = await storage.get('baguio:seeded:week-v3');
       if (!weekSeedFlag) {
         const weekdays = new Set(['mon', 'tue', 'wed', 'thu', 'fri']);
         const preserved = loadedSchedule.filter(x => !weekdays.has(x.day));
         loadedSchedule = [...preserved, ...RYAN_WEEK_SCHEDULE];
-        await storage.set('baguio:seeded:week-v2', '1');
+        await storage.set('baguio:seeded:week-v3', '1');
       }
       setSchedule(loadedSchedule);
       const e = await storage.get('baguio:expenses');
@@ -1958,6 +1959,7 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
     'listening': '#1F3A2E', // Listening (진녹)
     'grammar':   '#3B6B8A', // Grammar (블루그레이)
     'activity':  '#D17B3A', // Activity (밝은주황)
+    'lunch':     '#A8B8AB', // Lunch break (연한 회녹 — 수업 아님, 톤다운)
   };
   const CATEGORY_OPTIONS = [
     { key: '',          label: '자동 분류 (기본)' },
@@ -1968,6 +1970,7 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
     { key: 'listening', label: 'Listening' },
     { key: 'grammar',   label: 'Grammar' },
     { key: 'activity',  label: 'Activity' },
+    { key: 'lunch',     label: 'Lunch break' },
   ];
 
   // 수업 카테고리에 따라 색상.
@@ -1975,9 +1978,10 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
   // 3) 그 외엔 과목명으로 세분류.
   const getClassColor = (cls) => {
     if (cls.category && CATEGORY_COLORS[cls.category]) return CATEGORY_COLORS[cls.category];
+    const s = (cls.subject || '').toLowerCase();
+    if (s.includes('lunch') || s.includes('break')) return CATEGORY_COLORS.lunch;
     const room = (cls.room || '').trim().toUpperCase();
     if (room.startsWith('M')) return CATEGORY_COLORS['1on1'];
-    const s = (cls.subject || '').toLowerCase();
     if (s.includes('speak')) return CATEGORY_COLORS.speaking;
     if (s.includes('read')) return CATEGORY_COLORS.reading;
     if (s.includes('writ')) return CATEGORY_COLORS.writing;
@@ -2101,29 +2105,37 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
                     alignItems: 'stretch',
                     width: '100%',
                     padding: 0,
-                    background: '#FFFFFF',
-                    border: isEditing ? `2px solid ${bg}` : '1px solid rgba(31,58,46,0.12)',
+                    // 카테고리 색을 카드 배경 톤으로 — 색이 한눈에 들어오게
+                    background: bg,
+                    border: isEditing ? `2px solid #1F3A2E` : 'none',
                     borderRadius: 12,
                     overflow: 'hidden',
                     cursor: 'pointer',
                     fontFamily: 'inherit',
                     textAlign: 'left',
-                    opacity: isPast ? 0.45 : 1,
-                    boxShadow: isNow ? '0 4px 14px rgba(196,90,63,0.18)' : '0 1px 2px rgba(31,58,46,0.04)',
+                    opacity: isPast ? 0.5 : 1,
+                    boxShadow: isNow
+                      ? `0 6px 18px ${bg}66`
+                      : `0 2px 8px ${bg}33`,
                     transition: 'opacity 0.2s, box-shadow 0.2s',
                   }}
                 >
-                  {/* 좌측 카테고리 색 바 */}
-                  <div style={{ width: 6, background: bg, flexShrink: 0 }} />
+                  {/* 좌측 강조 바 — 더 두껍게 + 살짝 어둡게 */}
+                  <div style={{
+                    width: 10,
+                    background: 'rgba(0,0,0,0.25)',
+                    flexShrink: 0,
+                  }} />
 
-                  {/* 카드 본문 */}
+                  {/* 카드 본문 — 글자는 베이지(앱 배경색)로 대비 확보 */}
                   <div style={{ flex: 1, padding: '14px 16px', minWidth: 0 }}>
                     {/* 상단 — 시간 + NOW 배지 */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                       <span className="display" style={{
                         fontSize: 14,
                         fontWeight: 700,
-                        color: isPast ? '#7A8E7E' : '#1F3A2E',
+                        color: '#F5EFE0',
+                        opacity: 0.85,
                         letterSpacing: '-0.01em',
                       }}>
                         {s.time}–{getEndTime(s)}
@@ -2133,10 +2145,10 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
                           fontSize: 9,
                           padding: '2px 7px',
                           borderRadius: 4,
-                          background: '#C45A3F',
-                          color: '#F5EFE0',
+                          background: '#F5EFE0',
+                          color: bg,
                           letterSpacing: '0.1em',
-                          fontWeight: 700,
+                          fontWeight: 800,
                         }}>NOW</span>
                       )}
                     </div>
@@ -2145,7 +2157,7 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
                     <div className="display" style={{
                       fontSize: 17,
                       fontWeight: 700,
-                      color: '#1F3A2E',
+                      color: '#F5EFE0',
                       lineHeight: 1.25,
                       letterSpacing: '-0.01em',
                       textDecoration: isPast ? 'line-through' : 'none',
@@ -2158,7 +2170,8 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
                     {roomLine && (
                       <div style={{
                         fontSize: 12,
-                        color: '#5C6F62',
+                        color: '#F5EFE0',
+                        opacity: 0.85,
                         marginTop: 6,
                         fontWeight: 600,
                       }}>
@@ -2170,7 +2183,8 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
                     {s.teacher && (
                       <div style={{
                         fontSize: 12,
-                        color: '#7A8E7E',
+                        color: '#F5EFE0',
+                        opacity: 0.7,
                         marginTop: 3,
                       }}>
                         👤 {s.teacher}
@@ -2216,6 +2230,7 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
             { label: 'Listening', color: '#1F3A2E' },
             { label: 'Grammar', color: '#3B6B8A' },
             { label: 'Activity', color: '#D17B3A' },
+            { label: 'Lunch', color: '#A8B8AB' },
           ].map(item => (
             <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ width: 8, height: 8, borderRadius: 2, background: item.color }} />
