@@ -2840,9 +2840,26 @@ function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpe
         </div>
         <SectionTitle kicker={d.date}>{d.title}</SectionTitle>
 
-        {/* 본문 페어들 — 표시 시점에 한 번 더 한·영 자동 분류 (이전에 뒤집혀 저장된 일기도 바로잡음) */}
+        {/* 본문 페어들 + 그룹 헤딩(## Version A 등). 표시 시점에 한 번 더 한·영 자동 분류. */}
         <Card style={{ padding: 18 }}>
           {d.paragraphs.map((p, i) => {
+            // 그룹 헤딩(예: ## Version A) — 본문 안의 소제목으로 표시
+            if (p.heading) {
+              return (
+                <div key={i} className="display" style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: '#C45A3F',
+                  letterSpacing: '0.02em',
+                  marginTop: i === 0 ? 0 : 18,
+                  marginBottom: 14,
+                  paddingBottom: 6,
+                  borderBottom: '1px solid rgba(196,90,63,0.2)',
+                }}>
+                  {p.heading}
+                </div>
+              );
+            }
             const fixed = ensureKoEnOrder(p);
             return (
               <div key={i} style={{ marginBottom: i < d.paragraphs.length - 1 ? 22 : 0 }}>

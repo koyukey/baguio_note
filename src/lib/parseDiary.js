@@ -135,42 +135,78 @@ export function parseDiaryMarkdown(text) {
     warnings.push('제목(# ...) 찾지 못함');
   }
 
-  // 2) 본문 — 제목 다음 ~ 첫 `---` 또는 `## ` 직전까지
+  // 본문 끝 판정 — `---`(섹션 구분선) 또는 *알려진 표 섹션 헤더*(## Vocabulary 등)만.
+  // 알려지지 않은 ## 헤딩(예: `## Version A`)은 본문 안의 그룹 헤더로 사용 가능.
+  const isKnownSection = (line) => {
+    for (const pattern of Object.values(SECTION_HEADER_PATTERNS)) {
+      if (pattern.test(line)) return true;
+    }
+    return false;
+  };
   let bodyEnd = lines.length;
   for (let i = bodyStart; i < lines.length; i++) {
     const line = lines[i].trim();
-    if (line === '---' || line.startsWith('## ')) {
+    if (line === '---' || isKnownSection(line)) {
       bodyEnd = i;
       break;
     }
   }
 
-  // 본문 블록 → 빈 줄로 분리된 문단 모음
+  // 본문 블록 → 토큰 시퀀스: { type: 'heading', text } 또는 { type: 'para', text }
+  // 빈 줄로 문단 분리하되, `## ...` 줄은 즉시 heading 토큰으로 끊어냄.
   const bodyLines = lines.slice(bodyStart, bodyEnd);
-  const paragraphs = [];
+  const tokens = [];
   let buffer = [];
+  const flushBuffer = () => {
+    if (buffer.length > 0) {
+      tokens.push({ type: 'para', text: buffer.join('\n').trim() });
+      buffer = [];
+    }
+  };
   for (const line of bodyLines) {
-    if (line.trim() === '') {
-      if (buffer.length > 0) {
-        paragraphs.push(buffer.join('\n').trim());
-        buffer = [];
-      }
+    const trimmed = line.trim();
+    if (trimmed === '') {
+      flushBuffer();
+    } else if (trimmed.startsWith('## ')) {
+      // 알려지지 않은 ## 헤딩 — 그룹 헤더로 본문에 보존
+      flushBuffer();
+      tokens.push({ type: 'heading', text: trimmed.replace(/^##\s+/, '').trim() });
     } else {
       buffer.push(line);
     }
   }
-  if (buffer.length > 0) paragraphs.push(buffer.join('\n').trim());
+  flushBuffer();
 
-  // 페어로 묶되, 각 페어 안에서 어떤 게 한국어이고 어떤 게 영어인지 자동 감지.
-  // 사용자가 한·영 순서를 바꿔 붙여넣거나 첫 줄이 잘려도 화면에 항상 한국어=작게, 영어=크게로 표시되도록.
-  for (let i = 0; i < paragraphs.length; i += 2) {
-    const a = paragraphs[i];
-    const b = paragraphs[i + 1] || '';
-    const { ko, en } = classifyPair(a, b);
-    result.paragraphs.push({ ko, en });
+  // 헤딩을 기준으로 그룹화 → 각 그룹 안의 문단들끼리만 페어링.
+  // 그래야 `## Version A` 다음 5문단 / `## Version B` 다음 5문단이 어긋나지 않음.
+  const groups = []; // [{ heading?: string, paragraphs: string[] }]
+  let current = { heading: null, paragraphs: [] };
+  for (const tok of tokens) {
+    if (tok.type === 'heading') {
+      if (current.paragraphs.length > 0 || current.heading) groups.push(current);
+      current = { heading: tok.text, paragraphs: [] };
+    } else {
+      current.paragraphs.push(tok.text);
+    }
   }
-  if (paragraphs.length % 2 === 1) {
-    warnings.push(`본문 문단 수가 홀수(${paragraphs.length}). 마지막 문단에 짝이 없음.`);
+  if (current.paragraphs.length > 0 || current.heading) groups.push(current);
+
+  // 각 그룹 안에서 한·영 페어 분류 → result.paragraphs에 평탄화.
+  // heading은 별도 항목으로 같이 넣어서 화면이 소제목처럼 표시할 수 있게.
+  for (const g of groups) {
+    if (g.heading) {
+      result.paragraphs.push({ heading: g.heading });
+    }
+    const ps = g.paragraphs;
+    for (let i = 0; i < ps.length; i += 2) {
+      const a = ps[i];
+      const b = ps[i + 1] || '';
+      const { ko, en } = classifyPair(a, b);
+      result.paragraphs.push({ ko, en });
+    }
+    if (ps.length % 2 === 1) {
+      warnings.push(`${g.heading ? `"${g.heading}" 그룹의 ` : ''}본문 문단 수가 홀수(${ps.length}). 마지막 문단에 짝이 없음.`);
+    }
   }
 
   // 3) 표 섹션 — 헤더 매칭 후 표 파싱
