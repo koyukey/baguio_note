@@ -440,7 +440,16 @@ export default function BaguioApp() {
       const e = await storage.get('baguio:expenses');
       if (e) { try { setExpenses(JSON.parse(e)); } catch {} }
       const v = await storage.get('baguio:vocab');
-      if (v) { try { setVocab(JSON.parse(v)); } catch {} }
+      if (v) {
+        try {
+          // 마이그레이션: id 없는 옛 단어들에 고유 id 부여.
+          // (id 없으면 en으로 키 잡혀서 같은 영어 단어가 여러 일기에서 들어왔을 때 같이 토글되던 버그 해결)
+          const parsed = JSON.parse(v).map((item, i) =>
+            item.id ? item : { ...item, id: `vocab-mig-${Date.now()}-${i}` }
+          );
+          setVocab(parsed);
+        } catch {}
+      }
       const ro = await storage.get('baguio:routines');
       if (ro) { try { setRoutines(JSON.parse(ro)); } catch {} }
       const ar = await storage.get('baguio:articles');
@@ -788,9 +797,9 @@ export default function BaguioApp() {
 // ============================================================
 //  공통 카드 컴포넌트
 // ============================================================
-function Card({ children, style = {}, accent = false }) {
+function Card({ children, style = {}, accent = false, onClick }) {
   return (
-    <div className="fade-up" style={{
+    <div className="fade-up" onClick={onClick} style={{
       background: accent ? '#1F3A2E' : '#FAF7EC',
       color: accent ? '#F5EFE0' : '#1F3A2E',
       borderRadius: 16,
@@ -2746,6 +2755,20 @@ function MoneyTab({ lang = 'ko', phpRate, setPhpRate, rateUpdated, setRateUpdate
 // 저장된 일기 페어에서 ko/en이 뒤집혀 있으면 자동으로 바로잡음.
 // 새 일기는 파서가 이미 분류해서 저장하지만, 기존에 잘못 저장된 일기도
 // 표시 시점에 한 번 더 분류해서 화면엔 항상 한국어=작게, 영어=크게로 표시.
+// 텍스트에서 단어를 찾아 노란 형광펜 스타일로 감쌈. 대소문자 무시.
+function highlightInText(text, word) {
+  if (!text || !word) return text;
+  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`(${escaped})`, 'gi');
+  const parts = text.split(re);
+  const wordLower = word.toLowerCase();
+  return parts.map((part, i) =>
+    part.toLowerCase() === wordLower
+      ? <mark key={i} style={{ background: '#FFE89A', color: 'inherit', padding: '0 2px', borderRadius: 3 }}>{part}</mark>
+      : part
+  );
+}
+
 function ensureKoEnOrder(pair) {
   const koRatio = (text) => {
     if (!text) return 0;
@@ -2761,7 +2784,7 @@ function ensureKoEnOrder(pair) {
   return pair;
 }
 
-function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpenId, onPendingOpenConsumed, onDetailViewChange = () => {} }) {
+function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpenId, onPendingOpenConsumed, onDetailViewChange = () => {}, highlightWord = null, onHighlightConsumed = () => {} }) {
   const t = (ko, en) => lang === 'ko' ? ko : en;
   const [view, setView] = useState('list'); // list | add | detail
   const [openId, setOpenId] = useState(null);
@@ -2787,6 +2810,13 @@ function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpe
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [raw, setRaw] = useState('');
   const [parsed, setParsed] = useState(null);
+
+  // 상세 화면을 떠나면 강조 단어 소비 — 다시 들어와도 강조 X
+  useEffect(() => {
+    if (view !== 'detail' && highlightWord) {
+      onHighlightConsumed();
+    }
+  }, [view, highlightWord, onHighlightConsumed]);
 
   const sorted = [...diaries].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
@@ -2865,12 +2895,12 @@ function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpe
               <div key={i} style={{ marginBottom: i < d.paragraphs.length - 1 ? 22 : 0 }}>
                 {fixed.ko && (
                   <div style={{ fontSize: 12, color: '#7A8E7E', lineHeight: 1.6, marginBottom: 6 }}>
-                    {fixed.ko}
+                    {highlightWord ? highlightInText(fixed.ko, highlightWord) : fixed.ko}
                   </div>
                 )}
                 {fixed.en && (
                   <div style={{ fontSize: 15, color: '#1F3A2E', lineHeight: 1.6, fontWeight: 500 }}>
-                    {fixed.en}
+                    {highlightWord ? highlightInText(fixed.en, highlightWord) : fixed.en}
                   </div>
                 )}
               </div>
@@ -2883,20 +2913,25 @@ function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpe
           <>
             <SectionTitle kicker={`VOCABULARY (${d.vocabulary.length})`}>{t('단어', 'Vocabulary')}</SectionTitle>
             <Card style={{ padding: 4 }}>
-              {d.vocabulary.map((v, i) => (
-                <div key={i} style={{
-                  padding: '10px 12px',
-                  borderBottom: i < d.vocabulary.length - 1 ? '1px dashed rgba(31,58,46,0.1)' : 'none',
-                }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{v.word}</div>
-                  <div style={{ fontSize: 12, color: '#C45A3F', marginTop: 2 }}>{v.meaning}</div>
-                  {v.example && (
-                    <div style={{ fontSize: 11, color: '#7A8E7E', marginTop: 4, fontStyle: 'italic' }}>
-                      "{v.example}"
-                    </div>
-                  )}
-                </div>
-              ))}
+              {d.vocabulary.map((v, i) => {
+                const isHi = highlightWord && v.word && v.word.toLowerCase() === highlightWord.toLowerCase();
+                return (
+                  <div key={i} style={{
+                    padding: '10px 12px',
+                    borderBottom: i < d.vocabulary.length - 1 ? '1px dashed rgba(31,58,46,0.1)' : 'none',
+                    background: isHi ? '#FFE89A' : 'transparent',
+                    borderRadius: isHi ? 6 : 0,
+                  }}>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>{v.word}</div>
+                    <div style={{ fontSize: 12, color: '#C45A3F', marginTop: 2 }}>{v.meaning}</div>
+                    {v.example && (
+                      <div style={{ fontSize: 11, color: '#7A8E7E', marginTop: 4, fontStyle: 'italic' }}>
+                        "{highlightWord ? highlightInText(v.example, highlightWord) : v.example}"
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </Card>
           </>
         )}
@@ -2906,20 +2941,25 @@ function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpe
           <>
             <SectionTitle kicker={`PHRASAL VERBS (${d.phrasal_verbs.length})`}>{t('구동사', 'Phrasal Verbs')}</SectionTitle>
             <Card style={{ padding: 4 }}>
-              {d.phrasal_verbs.map((p, i) => (
-                <div key={i} style={{
-                  padding: '10px 12px',
-                  borderBottom: i < d.phrasal_verbs.length - 1 ? '1px dashed rgba(31,58,46,0.1)' : 'none',
-                }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#C45A3F' }}>{p.verb}</div>
-                  <div style={{ fontSize: 12, color: '#1F3A2E', marginTop: 2 }}>{p.meaning}</div>
-                  {p.example && (
-                    <div style={{ fontSize: 11, color: '#7A8E7E', marginTop: 4, fontStyle: 'italic' }}>
-                      "{p.example}"
-                    </div>
-                  )}
-                </div>
-              ))}
+              {d.phrasal_verbs.map((p, i) => {
+                const isHi = highlightWord && p.verb && p.verb.toLowerCase() === highlightWord.toLowerCase();
+                return (
+                  <div key={i} style={{
+                    padding: '10px 12px',
+                    borderBottom: i < d.phrasal_verbs.length - 1 ? '1px dashed rgba(31,58,46,0.1)' : 'none',
+                    background: isHi ? '#FFE89A' : 'transparent',
+                    borderRadius: isHi ? 6 : 0,
+                  }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#C45A3F' }}>{p.verb}</div>
+                    <div style={{ fontSize: 12, color: '#1F3A2E', marginTop: 2 }}>{p.meaning}</div>
+                    {p.example && (
+                      <div style={{ fontSize: 11, color: '#7A8E7E', marginTop: 4, fontStyle: 'italic' }}>
+                        "{highlightWord ? highlightInText(p.example, highlightWord) : p.example}"
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </Card>
           </>
         )}
@@ -2929,20 +2969,25 @@ function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpe
           <>
             <SectionTitle kicker={`EXPRESSIONS (${d.expressions.length})`}>{t('표현', 'Useful Expressions')}</SectionTitle>
             <Card style={{ padding: 4 }}>
-              {d.expressions.map((e, i) => (
-                <div key={i} style={{
-                  padding: '10px 12px',
-                  borderBottom: i < d.expressions.length - 1 ? '1px dashed rgba(31,58,46,0.1)' : 'none',
-                }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{e.expression}</div>
-                  <div style={{ fontSize: 12, color: '#C45A3F', marginTop: 2 }}>{e.meaning}</div>
-                  {e.note && (
-                    <div style={{ fontSize: 11, color: '#7A8E7E', marginTop: 4 }}>
-                      {t('노트', 'Note')}: {e.note}
-                    </div>
-                  )}
-                </div>
-              ))}
+              {d.expressions.map((e, i) => {
+                const isHi = highlightWord && e.expression && e.expression.toLowerCase() === highlightWord.toLowerCase();
+                return (
+                  <div key={i} style={{
+                    padding: '10px 12px',
+                    borderBottom: i < d.expressions.length - 1 ? '1px dashed rgba(31,58,46,0.1)' : 'none',
+                    background: isHi ? '#FFE89A' : 'transparent',
+                    borderRadius: isHi ? 6 : 0,
+                  }}>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>{e.expression}</div>
+                    <div style={{ fontSize: 12, color: '#C45A3F', marginTop: 2 }}>{e.meaning}</div>
+                    {e.note && (
+                      <div style={{ fontSize: 11, color: '#7A8E7E', marginTop: 4 }}>
+                        {t('노트', 'Note')}: {e.note}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </Card>
           </>
         )}
@@ -3091,10 +3136,12 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
   const [section, setSection] = useState('phrases'); // phrases | writing | diary
   const [showLearned, setShowLearned] = useState(false); // Phrases: 외운 것 보기 토글
   const [pendingDiaryOpen, setPendingDiaryOpen] = useState(null); // 일기로 점프 신호
+  const [highlightWord, setHighlightWord] = useState(null); // 점프 시 강조할 단어 (1회용)
 
-  // 단어 카드 → 일기 상세로 점프
-  const jumpToDiary = (diaryId) => {
+  // 단어 카드 → 일기 상세로 점프 (단어 텍스트를 같이 넘겨 상세에서 강조)
+  const jumpToDiary = (diaryId, word = null) => {
     setPendingDiaryOpen(diaryId);
+    setHighlightWord(word);
     setSection('diary');
   };
 
@@ -3148,14 +3195,14 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
 
   const addCard = () => {
     if (!newCard.en.trim() || !newCard.ko.trim()) return;
-    setVocab([{ ...newCard }, ...vocab]);
+    setVocab([{ ...newCard, id: `vocab-${Date.now()}-${Math.random().toString(36).slice(2,7)}` }, ...vocab]);
     setNewCard({ cat: newCard.cat, en: '', ko: '' });
   };
-  const removeCard = (en) => setVocab(vocab.filter(v => v.en !== en));
-  // 외움 토글
-  const toggleLearned = (en) => {
+  // id 기반으로 토글/삭제 — 같은 영어 단어가 여러 일기에서 들어와도 정확히 그 한 개만 처리
+  const removeCard = (id) => setVocab(vocab.filter(v => v.id !== id));
+  const toggleLearned = (id) => {
     setVocab(vocab.map(v =>
-      v.en === en
+      v.id === id
         ? { ...v, learned: !v.learned, learnedAt: !v.learned ? new Date().toISOString() : null }
         : v
     ));
@@ -3166,7 +3213,9 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
     setDiaries([diary, ...diaries]);
     // 중복(en이 이미 있는 것) 제외하고 Phrases에 통합
     const existingEnSet = new Set(vocab.map(v => v.en));
-    const fresh = phrasesToAdd.filter(p => !existingEnSet.has(p.en));
+    const fresh = phrasesToAdd
+      .filter(p => !existingEnSet.has(p.en))
+      .map((p, i) => ({ ...p, id: `vocab-diary-${Date.now()}-${i}-${Math.random().toString(36).slice(2,5)}` }));
     if (fresh.length > 0) setVocab([...fresh, ...vocab]);
   };
   const deleteDiary = (id) => {
@@ -3266,7 +3315,9 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
               ))}
               <button
                 onClick={() => setShowLearned(!showLearned)}
-                title={showLearned ? t('외운 것 보임 ON', 'Showing learned') : t('외운 것 숨김', 'Learned hidden')}
+                title={showLearned
+                  ? t('외운 단어까지 보이는 중. 끄면 안 외운 단어만 표시', 'Showing learned. Tap to hide.')
+                  : t('외운 단어는 숨김. 켜면 외운 단어도 표시', 'Learned hidden. Tap to show.')}
                 style={{
                   padding: '8px 12px',
                   background: showLearned ? '#C45A3F' : 'transparent',
@@ -3275,9 +3326,10 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
                   borderRadius: 10, cursor: 'pointer',
                   fontSize: 11, fontWeight: 600,
                   display: 'flex', alignItems: 'center', gap: 4,
+                  whiteSpace: 'nowrap',
                 }}
               >
-                {showLearned ? '★' : '☆'} {t('외움', 'Learned')}
+                {showLearned ? '★' : '☆'} {t('외운 것', 'Learned')}
               </button>
             </div>
           </Card>
@@ -3364,7 +3416,7 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
                       </div>
                       {v.fromDiaryId && diaries.some(d => d.id === v.fromDiaryId) && (
                         <button
-                          onClick={() => jumpToDiary(v.fromDiaryId)}
+                          onClick={() => jumpToDiary(v.fromDiaryId, v.en)}
                           title={t('출처 일기 보기', 'View source diary')}
                           style={{
                             background: 'transparent', border: 'none', padding: 4,
@@ -3375,7 +3427,7 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
                         ><BookOpen size={14} /></button>
                       )}
                       <button
-                        onClick={() => toggleLearned(v.en)}
+                        onClick={() => toggleLearned(v.id)}
                         title={learned ? t('외움 해제', 'Mark unlearned') : t('외움', 'Mark learned')}
                         style={{
                           background: 'transparent', border: 'none', padding: 4,
@@ -3384,7 +3436,7 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
                           lineHeight: 1,
                         }}
                       >{learned ? '★' : '☆'}</button>
-                      <button onClick={() => removeCard(v.en)} style={iconBtn}><X size={12} color="#7A8E7E" /></button>
+                      <button onClick={() => removeCard(v.id)} style={iconBtn}><X size={12} color="#7A8E7E" /></button>
                     </div>
                   );
                 })}
@@ -3586,6 +3638,8 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
           pendingOpenId={pendingDiaryOpen}
           onPendingOpenConsumed={() => setPendingDiaryOpen(null)}
           onDetailViewChange={setDiaryDetailOpen}
+          highlightWord={highlightWord}
+          onHighlightConsumed={() => setHighlightWord(null)}
         />
       )}
     </>
