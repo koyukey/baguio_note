@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Compass, BookOpen, Wallet, CalendarDays, Sparkles,
   Plus, Trash2, Check, X, RefreshCw, ArrowRightLeft,
@@ -368,7 +368,11 @@ export default function BaguioApp() {
   const [checklist, setChecklist] = useState(STARTER_CHECKLIST);
   const [schedule, setSchedule] = useState(STARTER_SCHEDULE);
   const [expenses, setExpenses] = useState([]);
-  const [vocab, setVocab] = useState([...STARTER_DIARY_PHRASES, ...STARTER_PHRASES]);
+  const [vocab, setVocab] = useState(() =>
+    [...STARTER_DIARY_PHRASES, ...STARTER_PHRASES].map((p, i) => ({
+      ...p, id: p.id || `vocab-seed-${i}-${p.en}`
+    }))
+  );
   const [routines, setRoutines] = useState(STARTER_ROUTINES);
   const [articles, setArticles] = useState([]);
   const [diaries, setDiaries] = useState(STARTER_DIARIES);
@@ -471,7 +475,9 @@ export default function BaguioApp() {
         // (위의 setVocab은 이미 로드된 c 결과를 갖고 있으므로 함수형 업데이트)
         setVocab(prev => {
           const existing = new Set(prev.map(v => v.en));
-          const fresh = STARTER_DIARY_PHRASES.filter(p => !existing.has(p.en));
+          const fresh = STARTER_DIARY_PHRASES
+            .filter(p => !existing.has(p.en))
+            .map((p, i) => ({ ...p, id: `vocab-seed-extra-${Date.now()}-${i}` }));
           return fresh.length > 0 ? [...fresh, ...prev] : prev;
         });
         await storage.set('baguio:seeded:diary-v1', '1');
@@ -552,7 +558,14 @@ export default function BaguioApp() {
           case 'baguio:checklist': setChecklist(JSON.parse(serialized)); break;
           case 'baguio:schedule': setSchedule(JSON.parse(serialized)); break;
           case 'baguio:expenses': setExpenses(JSON.parse(serialized)); break;
-          case 'baguio:vocab': setVocab(JSON.parse(serialized)); break;
+          case 'baguio:vocab': {
+            // 동기화로 받은 데이터에도 id 부여 마이그레이션
+            const parsed = JSON.parse(serialized).map((item, i) =>
+              item.id ? item : { ...item, id: `vocab-sync-${Date.now()}-${i}` }
+            );
+            setVocab(parsed);
+            break;
+          }
           case 'baguio:routines': setRoutines(JSON.parse(serialized)); break;
           case 'baguio:articles': setArticles(JSON.parse(serialized)); break;
           case 'baguio:diaries': setDiaries(JSON.parse(serialized)); break;
@@ -2811,9 +2824,14 @@ function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpe
   const [raw, setRaw] = useState('');
   const [parsed, setParsed] = useState(null);
 
-  // 상세 화면을 떠나면 강조 단어 소비 — 다시 들어와도 강조 X
+  // 상세 화면을 떠나면 강조 단어 소비 — 다시 들어와도 강조 X.
+  // 단, "한 번 detail에 들어갔다가 나간 경우"에만 소비. 마운트 직후엔 아직 안 들어간 상태이므로 무시.
+  const hasEnteredDetailRef = useRef(false);
   useEffect(() => {
-    if (view !== 'detail' && highlightWord) {
+    if (view === 'detail') {
+      hasEnteredDetailRef.current = true;
+    } else if (hasEnteredDetailRef.current && highlightWord) {
+      // detail에 들어갔던 적이 있고, 지금은 다른 view면 → 강조 해제
       onHighlightConsumed();
     }
   }, [view, highlightWord, onHighlightConsumed]);
