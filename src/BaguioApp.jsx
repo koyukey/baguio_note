@@ -3157,6 +3157,174 @@ function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpe
   );
 }
 
+// 글쓰기 본문을 보여주면서 드래그 선택 → 단어장 추가 팝업을 띄우는 컴포넌트.
+// 일기와 달리 글쓰기는 자유 텍스트라 표 파싱이 안 됨 → 사용자가 직접 단어를 골라 추가.
+function ArticleReader({ content, articleId, onAddToVocab, lang = 'ko' }) {
+  const t = (ko, en) => lang === 'ko' ? ko : en;
+  const containerRef = useRef(null);
+  // 선택 상태: { word, x, y } — 팝업 위치
+  const [selection, setSelection] = useState(null);
+  // 추가 폼 상태 (선택 단어 확정 후)
+  const [adding, setAdding] = useState(null); // null | { en, ko, cat }
+
+  // 텍스트 선택이 끝나면 호출 — 선택된 영문/문구를 잡아서 팝업 좌표 계산
+  const handleSelectionEnd = () => {
+    const sel = typeof window !== 'undefined' ? window.getSelection() : null;
+    if (!sel || sel.isCollapsed) { setSelection(null); return; }
+    const text = sel.toString().trim();
+    if (!text || text.length > 80) { setSelection(null); return; } // 너무 길면 단어/구가 아님
+    // 컨테이너 내부 선택인지 확인
+    if (!containerRef.current || !containerRef.current.contains(sel.anchorNode)) {
+      setSelection(null);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    if (!rect || (rect.width === 0 && rect.height === 0)) { setSelection(null); return; }
+    setSelection({
+      word: text,
+      // 선택 영역 위쪽 가운데 좌표 (스크롤 보정)
+      x: rect.left + rect.width / 2 + window.scrollX,
+      y: rect.top + window.scrollY,
+    });
+  };
+
+  // 팝업 외부 클릭 / Esc → 닫기
+  useEffect(() => {
+    if (!selection && !adding) return;
+    const onDocClick = (e) => {
+      // 팝업·폼 내부 클릭은 무시 (data-vocab-ui 마커로 구분)
+      if (e.target.closest && e.target.closest('[data-vocab-ui]')) return;
+      setSelection(null);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') { setSelection(null); setAdding(null); } };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [selection, adding]);
+
+  const openAddForm = () => {
+    if (!selection) return;
+    setAdding({ en: selection.word, ko: '', cat: '단어' });
+    setSelection(null);
+    // 텍스트 선택 해제
+    if (typeof window !== 'undefined') window.getSelection()?.removeAllRanges();
+  };
+
+  const submitAdd = () => {
+    if (!adding) return;
+    const en = (adding.en || '').trim();
+    const ko = (adding.ko || '').trim();
+    if (!en || !ko) return;
+    onAddToVocab({
+      en, ko,
+      cat: adding.cat || '단어',
+      fromArticleId: articleId,
+    });
+    setAdding(null);
+  };
+
+  return (
+    <>
+      <div
+        ref={containerRef}
+        onMouseUp={handleSelectionEnd}
+        onTouchEnd={handleSelectionEnd}
+        style={{
+          fontSize: 15, lineHeight: 1.85, color: '#1F3A2E',
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          userSelect: 'text', WebkitUserSelect: 'text',
+        }}
+      >
+        {content || <span style={{ color: '#A8B8AB' }}>내용이 없어요.</span>}
+      </div>
+
+      {/* 선택 직후 작은 액션 팝업 — '단어장에 추가' */}
+      {selection && (
+        <div
+          data-vocab-ui
+          style={{
+            position: 'absolute',
+            left: Math.max(12, Math.min(selection.x - 70, window.innerWidth - 152)),
+            top: Math.max(12, selection.y - 44),
+            background: '#1F3A2E',
+            color: '#F5EFE0',
+            borderRadius: 8,
+            padding: '8px 12px',
+            fontSize: 12, fontWeight: 600,
+            cursor: 'pointer',
+            boxShadow: '0 6px 20px rgba(31,58,46,0.3)',
+            zIndex: 100,
+            whiteSpace: 'nowrap',
+          }}
+          onClick={openAddForm}
+        >
+          + {t('단어장에 추가', 'Add to Wordbook')}
+        </div>
+      )}
+
+      {/* 입력 폼 (모달 스타일) */}
+      {adding && (
+        <div
+          data-vocab-ui
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(31,58,46,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 200, padding: 16,
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setAdding(null); }}
+        >
+          <div data-vocab-ui style={{
+            background: '#FAF7EC', borderRadius: 14, padding: 20,
+            width: '100%', maxWidth: 360,
+            boxShadow: '0 20px 60px rgba(31,58,46,0.4)',
+          }}>
+            <div style={{ fontSize: 11, letterSpacing: '0.15em', color: '#7A8E7E', fontWeight: 700, marginBottom: 8 }}>
+              {t('단어장에 추가', 'ADD TO WORDBOOK')}
+            </div>
+            <input
+              value={adding.en}
+              onChange={(e) => setAdding({ ...adding, en: e.target.value })}
+              placeholder={t('영어 표현', 'English')}
+              style={{ ...inputStyle, marginBottom: 8 }}
+              autoFocus
+            />
+            <input
+              value={adding.ko}
+              onChange={(e) => setAdding({ ...adding, ko: e.target.value })}
+              placeholder={t('한국어 뜻', 'Korean meaning')}
+              style={{ ...inputStyle, marginBottom: 8 }}
+            />
+            <select
+              value={adding.cat}
+              onChange={(e) => setAdding({ ...adding, cat: e.target.value })}
+              style={{ ...inputStyle, marginBottom: 12 }}
+            >
+              {['단어','구동사','표현','교실','식당','교통','쇼핑','일상','필리핀어','기타'].map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={submitAdd} disabled={!adding.en.trim() || !adding.ko.trim()}
+                style={{
+                  ...primaryBtn, flex: 1, justifyContent: 'center',
+                  opacity: (!adding.en.trim() || !adding.ko.trim()) ? 0.5 : 1,
+                }}>
+                <Save size={14} /> {t('추가', 'Add')}
+              </button>
+              <button onClick={() => setAdding(null)} style={secondaryBtn}>{t('취소', 'Cancel')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diaries = [], setDiaries = () => {}, setImmersive = () => {} }) {
   const t = (ko, en) => lang === 'ko' ? ko : en;
   const [section, setSection] = useState('phrases'); // phrases | writing | diary
@@ -3169,6 +3337,12 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
     setPendingDiaryOpen(diaryId);
     setHighlightWord(word);
     setSection('diary');
+  };
+  // 단어 카드 → 글쓰기 읽기로 점프
+  const jumpToArticle = (articleId) => {
+    setEditingId(null);
+    setViewingId(articleId);
+    setSection('writing');
   };
 
   // 표현 (phrases) 상태
@@ -3475,6 +3649,18 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
                           }}
                         ><BookOpen size={14} /></button>
                       )}
+                      {v.fromArticleId && articles.some(a => a.id === v.fromArticleId) && (
+                        <button
+                          onClick={() => jumpToArticle(v.fromArticleId)}
+                          title={t('출처 글 보기', 'View source article')}
+                          style={{
+                            background: 'transparent', border: 'none', padding: 4,
+                            cursor: 'pointer', flexShrink: 0,
+                            color: '#7A8E7E',
+                            display: 'flex', alignItems: 'center',
+                          }}
+                        ><Pencil size={14} /></button>
+                      )}
                       <button
                         onClick={() => toggleLearned(v.id)}
                         title={learned ? t('외움 해제', 'Mark unlearned') : t('외움', 'Mark learned')}
@@ -3592,13 +3778,18 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
               {formatRelativeTime(article.updatedAt)}
             </div>
             <Card style={{ padding: 20 }}>
-              {/* 줄바꿈을 그대로 살려서 글 전체 표시 — 길이 제한 없음 */}
-              <div style={{
-                fontSize: 15, lineHeight: 1.85, color: '#1F3A2E',
-                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-              }}>
-                {article.content || <span style={{ color: '#A8B8AB' }}>내용이 없어요.</span>}
-              </div>
+              {/* 선택 감지 — 본문에서 단어 드래그하면 단어장 추가 팝업 등장 */}
+              <ArticleReader
+                content={article.content}
+                articleId={article.id}
+                onAddToVocab={(payload) => {
+                  setVocab([
+                    { ...payload, id: `vocab-art-${Date.now()}-${Math.random().toString(36).slice(2,5)}` },
+                    ...vocab,
+                  ]);
+                }}
+                lang={lang}
+              />
             </Card>
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
               <button onClick={() => startEditArticle(article)} style={{ ...primaryBtn, flex: 1, justifyContent: 'center' }}>
