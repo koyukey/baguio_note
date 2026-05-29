@@ -2836,6 +2836,14 @@ function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpe
     }
   }, [view, highlightWord, onHighlightConsumed]);
 
+  // DiarySection이 언마운트될 때(서브탭 이동, 영어 탭 떠남 등)도 강조 해제 —
+  // 다시 일기로 돌아왔을 때 이전 강조가 남아있지 않도록.
+  useEffect(() => {
+    return () => {
+      onHighlightConsumed();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const sorted = [...diaries].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
   const goAdd = () => {
