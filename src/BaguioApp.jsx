@@ -3342,8 +3342,8 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
               <button
                 onClick={() => setShowLearned(!showLearned)}
                 title={showLearned
-                  ? t('외운 단어까지 보이는 중. 끄면 안 외운 단어만 표시', 'Showing learned. Tap to hide.')
-                  : t('외운 단어는 숨김. 켜면 외운 단어도 표시', 'Learned hidden. Tap to show.')}
+                  ? t('외운 단어까지 함께 표시 중. 끄면 안 외운 것만.', 'Showing learned too. Tap to hide.')
+                  : t('외운 단어는 숨김. 켜면 함께 표시.', 'Learned hidden. Tap to show.')}
                 style={{
                   padding: '8px 12px',
                   background: showLearned ? '#C45A3F' : 'transparent',
@@ -3355,7 +3355,7 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
                   whiteSpace: 'nowrap',
                 }}
               >
-                {showLearned ? '★' : '☆'} {t('외운 것', 'Learned')}
+                {showLearned ? '★' : '☆'} {t('외운 것도 보기', 'Show learned')}
               </button>
             </div>
           </Card>
@@ -3374,32 +3374,55 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
           </div>
 
           {/* 플래시카드 모드 */}
-          {mode === 'flash' && filtered.length > 0 && (
-            <>
-              <Card style={{ minHeight: 220, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', padding: 28 }}
-                onClick={() => setFlashSide(flashSide === 'en' ? 'ko' : 'en')}>
-                <div style={{ fontSize: 10, color: '#7A8E7E', letterSpacing: '0.15em', marginBottom: 14 }}>
-                  {flashIdx + 1} / {filtered.length} · {filtered[flashIdx].cat}
-                </div>
-                {flashSide === 'en' ? (
-                  <div className="display" style={{ fontSize: 22, fontWeight: 500, textAlign: 'center', lineHeight: 1.3 }}>
-                    {filtered[flashIdx].en}
+          {mode === 'flash' && filtered.length > 0 && (() => {
+            const currentCard = filtered[flashIdx];
+            const isLearned = currentCard.learned === true;
+            return (
+              <>
+                <Card style={{ minHeight: 220, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', padding: 28, position: 'relative' }}
+                  onClick={() => setFlashSide(flashSide === 'en' ? 'ko' : 'en')}>
+                  {/* 카드 우상단 — 이 단어 외움 표시 토글 (카드 뒤집기와 분리) */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleLearned(currentCard.id); }}
+                    title={isLearned ? t('외운 표시 해제', 'Unmark as learned') : t('이 단어를 외움 표시', 'Mark this word as learned')}
+                    style={{
+                      position: 'absolute', top: 10, right: 10,
+                      padding: '6px 10px',
+                      background: isLearned ? '#C45A3F' : 'transparent',
+                      color: isLearned ? '#F5EFE0' : '#7A8E7E',
+                      border: '1px solid ' + (isLearned ? '#C45A3F' : 'rgba(31,58,46,0.18)'),
+                      borderRadius: 8,
+                      fontSize: 11, fontWeight: 700,
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    {isLearned ? '★' : '☆'} {isLearned ? t('외움', 'Learned') : t('외웠어요', 'Got it')}
+                  </button>
+
+                  <div style={{ fontSize: 10, color: '#7A8E7E', letterSpacing: '0.15em', marginBottom: 14 }}>
+                    {flashIdx + 1} / {filtered.length} · {currentCard.cat}
                   </div>
-                ) : (
-                  <div className="display-italic" style={{ fontSize: 22, color: '#C45A3F', textAlign: 'center', lineHeight: 1.3 }}>
-                    {filtered[flashIdx].ko}
+                  {flashSide === 'en' ? (
+                    <div className="display" style={{ fontSize: 22, fontWeight: 500, textAlign: 'center', lineHeight: 1.3 }}>
+                      {currentCard.en}
+                    </div>
+                  ) : (
+                    <div className="display-italic" style={{ fontSize: 22, color: '#C45A3F', textAlign: 'center', lineHeight: 1.3 }}>
+                      {currentCard.ko}
+                    </div>
+                  )}
+                  <div style={{ marginTop: 18, fontSize: 10, color: '#7A8E7E', letterSpacing: '0.1em' }}>
+                    TAP TO {flashSide === 'en' ? '한국어' : 'ENGLISH'}
                   </div>
-                )}
-                <div style={{ marginTop: 18, fontSize: 10, color: '#7A8E7E', letterSpacing: '0.1em' }}>
-                  TAP TO {flashSide === 'en' ? '한국어' : 'ENGLISH'}
+                </Card>
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <button onClick={prev} style={{ ...secondaryBtn, flex: 1, justifyContent: 'center' }}>← 이전</button>
+                  <button onClick={next} style={{ ...primaryBtn, flex: 1, justifyContent: 'center' }}>다음 →</button>
                 </div>
-              </Card>
-              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                <button onClick={prev} style={{ ...secondaryBtn, flex: 1, justifyContent: 'center' }}>← 이전</button>
-                <button onClick={next} style={{ ...primaryBtn, flex: 1, justifyContent: 'center' }}>다음 →</button>
-              </div>
-            </>
-          )}
+              </>
+            );
+          })()}
 
           {/* 리스트 모드 */}
           {mode === 'list' && (
