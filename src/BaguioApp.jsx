@@ -3206,9 +3206,42 @@ function ArticleReader({ content, articleId, onAddToVocab, lang = 'ko' }) {
     };
   }, [selection, adding]);
 
+  // 선택된 텍스트를 영어/한국어로 자동 분리.
+  // 흔한 마크다운 사전 표기: **word**, `word`, "word | 뜻", "word - 뜻", "word: 뜻", "word (뜻)" 등.
+  const splitEnKo = (raw) => {
+    let s = (raw || '').trim();
+    // 마크다운 강조 제거: **w**, *w*, `w`, _w_
+    s = s.replace(/\*\*/g, '').replace(/`/g, '').replace(/^_+|_+$/g, '');
+    // 구분자 후보 (긴 것 먼저): | , — , -- , : , 한글 괄호, 영문 괄호, dash
+    const seps = [' | ', '|', ' — ', '—', ' -- ', ' - ', ' – ', ': ', ' : '];
+    for (const sep of seps) {
+      const idx = s.indexOf(sep);
+      if (idx > 0) {
+        const left = s.slice(0, idx).trim();
+        const right = s.slice(idx + sep.length).trim();
+        if (left && right) return { en: stripMd(left), ko: stripMd(right) };
+      }
+    }
+    // 괄호 패턴: "word (뜻)" 또는 "뜻 (word)"
+    const m = s.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+    if (m) {
+      const a = stripMd(m[1].trim());
+      const b = stripMd(m[2].trim());
+      // 영문 비율로 영어/한국어 판별
+      const aIsKo = /[가-힣]/.test(a);
+      return aIsKo ? { en: b, ko: a } : { en: a, ko: b };
+    }
+    // 구분자 없음 — 영어/한국어 단독으로 판별
+    s = stripMd(s);
+    if (/[가-힣]/.test(s) && !/[A-Za-z]/.test(s)) return { en: '', ko: s };
+    return { en: s, ko: '' };
+  };
+  const stripMd = (s) => (s || '').replace(/\*\*/g, '').replace(/`/g, '').replace(/^_+|_+$/g, '').trim();
+
   const openAddForm = () => {
     if (!selection) return;
-    setAdding({ en: selection.word, ko: '', cat: '단어' });
+    const { en, ko } = splitEnKo(selection.word);
+    setAdding({ en, ko, cat: '단어' });
     setSelection(null);
     // 텍스트 선택 해제
     if (typeof window !== 'undefined') window.getSelection()?.removeAllRanges();
