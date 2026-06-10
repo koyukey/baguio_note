@@ -35,3 +35,13 @@ button {
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+
+/* 모바일 키보드 회피 — visualViewport로 --kb-height가 채워짐. */
+/* data-kb-avoid 컨테이너는 키보드가 뜨면 그만큼 위로 올라옴. */
+:root { --kb-height: 0px; }
+[data-kb-avoid] {
+  position: sticky;
+  bottom: calc(var(--kb-height) + env(safe-area-inset-bottom, 0px) + 8px);
+  transition: bottom 120ms ease-out;
+  z-index: 10;
+}

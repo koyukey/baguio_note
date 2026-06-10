@@ -253,6 +253,28 @@ function getRoutineRate(history, days = 7) {
   return total > 0 ? Math.round((done/total) * 100) : 0;
 }
 
+// 모바일 키보드 회피 — :root --kb-height에 키보드 높이를 매 프레임 반영.
+// data-kb-avoid 속성이 붙은 컨테이너는 글로벌 CSS가 키보드 위로 띄움.
+// iOS Safari 17+, Chrome, Edge 지원. 미지원 브라우저는 noop (값 0으로 유지).
+function useKeyboardAvoidance() {
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.visualViewport) return;
+    const vv = window.visualViewport;
+    const update = () => {
+      const kb = window.innerHeight - vv.height - vv.offsetTop;
+      document.documentElement.style.setProperty('--kb-height', `${Math.max(0, kb)}px`);
+    };
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    update();
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+      document.documentElement.style.setProperty('--kb-height', '0px');
+    };
+  }, []);
+}
+
 function formatRelativeTime(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -346,6 +368,9 @@ function RefreshButton({ lang }) {
 //  메인 컴포넌트
 // ============================================================
 export default function BaguioApp() {
+  // 키보드 회피 — visualViewport 기반 --kb-height CSS 변수
+  useKeyboardAvoidance();
+
   const [tab, setTab] = useState('home');
   const [loaded, setLoaded] = useState(false);
   // 몰입 모드 — 글 읽기 화면에서 헤더·탭바를 숨겨 전체화면처럼 보이게
@@ -614,7 +639,8 @@ export default function BaguioApp() {
       background: '#F5EFE0',
       color: '#1F3A2E',
       fontFamily: "'Inter', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
-      paddingBottom: '100px',
+      // 노치/홈 인디케이터 회피 — env() 미지원 브라우저는 0px fallback
+      paddingBottom: 'calc(100px + env(safe-area-inset-bottom, 0px))',
       position: 'relative',
       overflow: 'hidden'
     }}>
@@ -764,7 +790,10 @@ export default function BaguioApp() {
           하단 탭바
       ============================================================ */}
       <nav style={{
-        position: 'fixed', bottom: 16, left: 16, right: 16,
+        position: 'fixed',
+        // 노치 아이폰의 홈 인디케이터 위로 — env() 미지원 시 16px
+        bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
+        left: 16, right: 16,
         background: '#1F3A2E',
         borderRadius: 18,
         padding: '8px 6px',
@@ -1306,12 +1335,14 @@ function SortableTodoItem({ item, isLast, onToggle, onRemove }) {
         {...listeners}
         aria-label="순서 변경 핸들"
         style={{
-          background: 'transparent', border: 'none', padding: 4,
+          background: 'transparent', border: 'none', padding: 10,
           cursor: 'grab', touchAction: 'none', display: 'flex', alignItems: 'center',
+          justifyContent: 'center',
+          minWidth: 36, minHeight: 36,
           color: '#A8B8AB'
         }}
       >
-        <GripVertical size={16} />
+        <GripVertical size={18} />
       </button>
       <button onClick={() => onToggle(item.id)} style={{
         width: 22, height: 22, borderRadius: 6,
@@ -1530,7 +1561,7 @@ function PlanTab({ lang = 'ko', checklist, setChecklist, routines, setRoutines }
             placeholder={lang === 'ko' ? '예: 챕터 3 읽기, 단어 20개 외우기' : 'e.g., Read Chapter 3, Memorize 20 words'}
             style={{ ...inputStyle, flex: 1, minWidth: 140 }}
           />
-          <select value={newGroup} onChange={(e) => setNewGroup(e.target.value)} style={{ ...inputStyle, width: 100 }}>
+          <select value={newGroup} onChange={(e) => setNewGroup(e.target.value)} style={{ ...inputStyle, flex: '0 0 auto', minWidth: 100 }}>
             {allGroupOptions.map(g => <option key={g} value={g}>{groupLabel(g)}</option>)}
           </select>
           <button onClick={add} style={primaryBtn}>
@@ -2050,8 +2081,9 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
               onClick={() => setSelectedDay(d.key)}
               style={{
                 flex: '0 0 auto',
-                minWidth: 56,
-                padding: '8px 12px',
+                minWidth: 64,
+                minHeight: 48,
+                padding: '10px 14px',
                 borderRadius: 10,
                 border: 'none',
                 background: isSelected ? '#1F3A2E' : 'rgba(31,58,46,0.06)',
@@ -2614,11 +2646,12 @@ function MoneyTab({ lang = 'ko', phpRate, setPhpRate, rateUpdated, setRateUpdate
                 ₩{phpRate.toFixed(2)}
               </div>
             ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div data-kb-avoid style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#1F3A2E' }}>
                 <input
                   type="number" step="0.01"
+                  inputMode="decimal"
                   value={draftRate} onChange={(e) => setDraftRate(e.target.value)}
-                  style={{ ...inputStyle, width: 100, color: '#1F3A2E', fontSize: 18, fontWeight: 700 }}
+                  style={{ ...inputStyle, flex: 1, minWidth: 100, color: '#1F3A2E', fontSize: 18, fontWeight: 700 }}
                 />
                 <button onClick={() => {
                   const v = parseFloat(draftRate);
@@ -2810,6 +2843,129 @@ function ensureKoEnOrder(pair) {
   return pair;
 }
 
+// 마크다운 전체화면 에디터 — 모바일에서 좁은 textarea 대신 100dvh 입력 화면.
+// 클립보드 자동 붙여넣기 시도(navigator.clipboard.readText) + iOS 폴백 안내.
+// 키보드는 visualViewport CSS var(--kb-height)로 회피.
+// 뒤로가기 = 모달 닫기 (history.pushState로 iOS 스와이프 대응).
+function MarkdownFullScreenEditor({ initial, lang, onClose, onSave, onToast }) {
+  const t = (ko, en) => lang === 'ko' ? ko : en;
+  const [value, setValue] = useState(initial || '');
+  const textareaRef = useRef(null);
+
+  // iOS 스와이프 뒤로가기로 모달 닫기
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.history.pushState({ markdownEditor: true }, '');
+    const onPop = () => onClose();
+    window.addEventListener('popstate', onPop);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      // 정상 닫힘 시에도 push했던 state 정리
+      if (window.history.state && window.history.state.markdownEditor) {
+        window.history.back();
+      }
+    };
+  }, [onClose]);
+
+  // 마운트 시 textarea에 포커스 (자동 키보드)
+  useEffect(() => {
+    const id = setTimeout(() => textareaRef.current?.focus(), 80);
+    return () => clearTimeout(id);
+  }, []);
+
+  const tryPaste = async () => {
+    try {
+      if (!navigator?.clipboard?.readText) {
+        onToast?.(t('직접 길게 눌러서 붙여넣어주세요', 'Long-press the field to paste'));
+        return;
+      }
+      const text = await navigator.clipboard.readText();
+      if (!text) {
+        onToast?.(t('클립보드가 비어 있어요', 'Clipboard is empty'));
+        return;
+      }
+      // 기존 값이 있으면 끝에 추가, 없으면 채움
+      setValue(prev => prev ? `${prev}\n\n${text}` : text);
+      onToast?.(t('클립보드에서 붙여넣었어요', 'Pasted from clipboard'));
+    } catch (e) {
+      // iOS Safari는 사용자 제스처 안에서만 작동. 실패하면 가이드.
+      onToast?.(t('직접 길게 눌러서 붙여넣어주세요', 'Long-press the field to paste'));
+    }
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 400,
+      background: '#F5EFE0',
+      display: 'flex', flexDirection: 'column',
+      paddingTop: 'env(safe-area-inset-top, 0px)',
+      paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+    }}>
+      {/* 상단 sticky 헤더 */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '12px 16px',
+        borderBottom: '1px solid rgba(31,58,46,0.08)',
+        background: '#F5EFE0',
+      }}>
+        <button onClick={onClose} style={{
+          background: 'none', border: 'none',
+          color: '#5C6F62', fontSize: 14, fontWeight: 600,
+          cursor: 'pointer', padding: '6px 10px', borderRadius: 8,
+          fontFamily: 'inherit',
+        }}>← {t('취소', 'Cancel')}</button>
+        <div className="display" style={{ fontSize: 14, fontWeight: 700, color: '#1F3A2E' }}>
+          {t('마크다운 편집', 'Edit Markdown')}
+        </div>
+        <button onClick={() => onSave(value)} style={{
+          background: '#1F3A2E', color: '#F5EFE0', border: 'none',
+          padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 700,
+          cursor: 'pointer', fontFamily: 'inherit',
+        }}>{t('완료', 'Done')}</button>
+      </div>
+
+      {/* 클립보드 붙여넣기 + 글자수 */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '8px 16px', gap: 8,
+        borderBottom: '1px solid rgba(31,58,46,0.05)',
+        background: '#FAF7EC',
+      }}>
+        <button onClick={tryPaste} style={{
+          background: '#1F3A2E', color: '#F5EFE0', border: 'none',
+          padding: '8px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+          cursor: 'pointer', fontFamily: 'inherit',
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>📋 {t('클립보드 자동 붙여넣기', 'Paste from clipboard')}</button>
+        <span style={{ fontSize: 11, color: '#7A8E7E', fontWeight: 600 }}>
+          {value.length.toLocaleString()}
+        </span>
+      </div>
+
+      {/* 본문 textarea — 남은 공간 전부 + 키보드 회피 */}
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder={`# ${t('제목', 'Title')}\n\n${t('한국어 문단', 'Korean paragraph')}\n\n${t('영어 문단', 'English paragraph')}\n\n## Vocabulary\n| Word | Meaning | Example |\n| --- | --- | --- |\n| ... | ... | ... |`}
+        style={{
+          flex: 1,
+          border: 'none', outline: 'none',
+          background: '#F5EFE0', color: '#1F3A2E',
+          padding: '14px 16px',
+          fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
+          fontSize: 13, lineHeight: 1.6,
+          resize: 'none',
+          // 키보드 회피 — visualViewport가 채워주는 --kb-height만큼 패딩
+          paddingBottom: 'calc(14px + var(--kb-height, 0px))',
+          boxSizing: 'border-box',
+          width: '100%',
+        }}
+      />
+    </div>
+  );
+}
+
 function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpenId, onPendingOpenConsumed, onDetailViewChange = () => {}, highlightWord = null, onHighlightConsumed = () => {} }) {
   const t = (ko, en) => lang === 'ko' ? ko : en;
   const [view, setView] = useState('list'); // list | add | detail
@@ -2836,6 +2992,14 @@ function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpe
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [raw, setRaw] = useState('');
   const [parsed, setParsed] = useState(null);
+  // 마크다운 전체화면 에디터 모달
+  const [markdownEditorOpen, setMarkdownEditorOpen] = useState(false);
+  const [pasteToast, setPasteToast] = useState(null);
+  useEffect(() => {
+    if (!pasteToast) return;
+    const id = setTimeout(() => setPasteToast(null), 2500);
+    return () => clearTimeout(id);
+  }, [pasteToast]);
 
   // 상세 화면을 떠나면 강조 단어 소비 — 다시 들어와도 강조 X.
   // 단, "한 번 detail에 들어갔다가 나간 경우"에만 소비. 마운트 직후엔 아직 안 들어간 상태이므로 무시.
@@ -3060,17 +3224,33 @@ function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpe
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
             </div>
             <div>
-              <div style={labelStyle}>{t('마크다운 붙여넣기', 'Paste markdown')}</div>
-              <textarea
-                value={raw}
-                onChange={(e) => { setRaw(e.target.value); setParsed(null); }}
-                placeholder={`# ${t('제목', 'Title')}\n\n${t('한국어 문단', 'Korean paragraph')}\n\n${t('영어 문단', 'English paragraph')}\n\n...\n\n## Vocabulary\n| Word | Meaning | Example |\n| --- | --- | --- |\n| ... | ... | ... |`}
+              <div style={labelStyle}>{t('마크다운', 'Markdown')}</div>
+              <button
+                onClick={() => setMarkdownEditorOpen(true)}
                 style={{
                   ...inputStyle,
-                  minHeight: 220, fontFamily: 'ui-monospace, monospace',
-                  fontSize: 12, lineHeight: 1.5, resize: 'vertical',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  minHeight: 56,
+                  display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4,
+                  background: '#FAF7EC',
                 }}
-              />
+              >
+                {raw.trim() ? (
+                  <>
+                    <span style={{ fontSize: 12, color: '#1F3A2E', fontWeight: 600 }}>
+                      {raw.length.toLocaleString()} {t('자 입력됨', 'chars entered')} · {t('탭해서 편집', 'Tap to edit')}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#7A8E7E', fontFamily: 'ui-monospace, monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {raw.slice(0, 80).replace(/\n/g, ' ⏎ ')}
+                    </span>
+                  </>
+                ) : (
+                  <span style={{ fontSize: 13, color: '#7A8E7E' }}>
+                    📋 {t('탭하여 전체화면으로 붙여넣기', 'Tap to paste in full screen')}
+                  </span>
+                )}
+              </button>
             </div>
             <button onClick={goPreview} disabled={!raw.trim()} style={{ ...primaryBtn, justifyContent: 'center' }}>
               {t('미리보기', 'Preview')} →
@@ -3115,6 +3295,32 @@ function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpe
               </div>
             </Card>
           </>
+        )}
+
+        {/* 전체화면 마크다운 에디터 — 작은 textarea 답답함 해소 + 클립보드 자동 붙여넣기 */}
+        {markdownEditorOpen && (
+          <MarkdownFullScreenEditor
+            initial={raw}
+            lang={lang}
+            onClose={() => setMarkdownEditorOpen(false)}
+            onSave={(val) => {
+              setRaw(val);
+              setParsed(null);
+              setMarkdownEditorOpen(false);
+            }}
+            onToast={setPasteToast}
+          />
+        )}
+        {pasteToast && (
+          <div style={{
+            position: 'fixed', left: '50%', bottom: 100,
+            transform: 'translateX(-50%)',
+            background: '#1F3A2E', color: '#F5EFE0',
+            padding: '10px 18px', borderRadius: 999,
+            fontSize: 12, fontWeight: 600,
+            boxShadow: '0 10px 30px rgba(31,58,46,0.3)',
+            zIndex: 500,
+          }}>{pasteToast}</div>
         )}
       </>
     );
@@ -3175,18 +3381,19 @@ function DiarySection({ lang = 'ko', diaries, saveDiary, deleteDiary, pendingOpe
 function ArticleReader({ content, articleId, onAddToVocab, lang = 'ko' }) {
   const t = (ko, en) => lang === 'ko' ? ko : en;
   const containerRef = useRef(null);
-  // 선택 상태: { word, x, y } — 팝업 위치
+  // 선택 상태: { word, x, y } — 데스크탑 드래그 후 팝업 위치
   const [selection, setSelection] = useState(null);
-  // 추가 폼 상태 (선택 단어 확정 후)
+  // 추가 폼 상태 (시트로 표시)
   const [adding, setAdding] = useState(null); // null | { en, ko, cat }
+  // 더블탭 감지용
+  const lastTap = useRef({ time: 0, x: 0, y: 0 });
 
-  // 텍스트 선택이 끝나면 호출 — 선택된 영문/문구를 잡아서 팝업 좌표 계산
-  const handleSelectionEnd = () => {
+  // 데스크탑 마우스 드래그 선택 — 기존 동작 유지
+  const handleMouseSelectionEnd = () => {
     const sel = typeof window !== 'undefined' ? window.getSelection() : null;
     if (!sel || sel.isCollapsed) { setSelection(null); return; }
     const text = sel.toString().trim();
-    if (!text || text.length > 80) { setSelection(null); return; } // 너무 길면 단어/구가 아님
-    // 컨테이너 내부 선택인지 확인
+    if (!text || text.length > 80) { setSelection(null); return; }
     if (!containerRef.current || !containerRef.current.contains(sel.anchorNode)) {
       setSelection(null);
       return;
@@ -3196,10 +3403,65 @@ function ArticleReader({ content, articleId, onAddToVocab, lang = 'ko' }) {
     if (!rect || (rect.width === 0 && rect.height === 0)) { setSelection(null); return; }
     setSelection({
       word: text,
-      // 선택 영역 위쪽 가운데 좌표 (스크롤 보정)
       x: rect.left + rect.width / 2 + window.scrollX,
       y: rect.top + window.scrollY,
     });
+  };
+
+  // 모바일 더블탭 — iOS Safari OS 메뉴 우회.
+  // 300ms 이내 + 30px 이내 같은 좌표에 두 번 탭 → 그 자리의 단어를 자동 선택해서 시트 열기.
+  const handleTouchEnd = (e) => {
+    const now = Date.now();
+    const touch = e.changedTouches?.[0];
+    if (!touch) return;
+    const { clientX: x, clientY: y } = touch;
+    const prev = lastTap.current;
+    const isDouble = now - prev.time < 320 && Math.abs(x - prev.x) < 30 && Math.abs(y - prev.y) < 30;
+    lastTap.current = { time: now, x, y };
+    if (!isDouble) return;
+
+    // OS Look Up/Share 메뉴 차단 — 동기로 호출해야 효과 있음
+    e.preventDefault();
+
+    // 그 자리의 캐럿 위치 추출 → 단어 경계로 확장
+    let range = null;
+    if (typeof document.caretRangeFromPoint === 'function') {
+      range = document.caretRangeFromPoint(x, y);
+    } else if (typeof document.caretPositionFromPoint === 'function') {
+      const pos = document.caretPositionFromPoint(x, y);
+      if (pos) {
+        range = document.createRange();
+        range.setStart(pos.offsetNode, pos.offset);
+        range.collapse(true);
+      }
+    }
+    if (!range || range.startContainer.nodeType !== Node.TEXT_NODE) return;
+    if (!containerRef.current?.contains(range.startContainer)) return;
+
+    // WebKit 전용 expand — Firefox는 throw하므로 try/catch
+    let word = '';
+    try {
+      range.expand('word');
+      word = range.toString().trim();
+    } catch (_) {
+      // Fallback: 직접 텍스트 노드에서 단어 경계 찾기
+      const node = range.startContainer;
+      const text = node.textContent || '';
+      const idx = range.startOffset;
+      let l = idx, r = idx;
+      while (l > 0 && /\S/.test(text[l - 1])) l--;
+      while (r < text.length && /\S/.test(text[r])) r++;
+      word = text.slice(l, r).trim();
+    }
+    if (!word || word.length > 80) return;
+
+    // 시각 피드백: 네이티브 선택 하이라이트
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    if (range.toString().trim() === word) sel?.addRange(range);
+
+    const { en, ko } = splitEnKo(word);
+    setAdding({ en, ko, cat: '단어' });
   };
 
   // 팝업 외부 클릭 / Esc → 닫기
@@ -3277,18 +3539,40 @@ function ArticleReader({ content, articleId, onAddToVocab, lang = 'ko' }) {
     <>
       <div
         ref={containerRef}
-        onMouseUp={handleSelectionEnd}
-        onTouchEnd={handleSelectionEnd}
+        onMouseUp={handleMouseSelectionEnd}
+        onTouchEnd={handleTouchEnd}
         style={{
           fontSize: 15, lineHeight: 1.85, color: '#1F3A2E',
           whiteSpace: 'pre-wrap', wordBreak: 'break-word',
           userSelect: 'text', WebkitUserSelect: 'text',
+          // iOS 더블탭 줌 방지 (viewport meta가 막아주지만 보강)
+          touchAction: 'manipulation',
         }}
       >
         {content || <span style={{ color: '#A8B8AB' }}>{t('내용이 없어요.', 'No content.')}</span>}
       </div>
 
-      {/* 선택 직후 작은 액션 팝업 — '단어장에 추가' */}
+      {/* 항상 보이는 명시적 입력 버튼 — 더블탭이 잘 안 잡힐 때 fallback */}
+      <button
+        onClick={() => setAdding({ en: '', ko: '', cat: '단어' })}
+        style={{
+          marginTop: 14, width: '100%',
+          background: 'transparent',
+          border: '1px dashed rgba(31,58,46,0.2)',
+          borderRadius: 10,
+          padding: '12px',
+          fontSize: 12, fontWeight: 600,
+          color: '#5C6F62',
+          cursor: 'pointer', fontFamily: 'inherit',
+        }}
+      >
+        ＋ {t('단어 직접 입력', 'Add word manually')}
+        <span style={{ fontSize: 10, opacity: 0.7, marginLeft: 6 }}>
+          ({t('또는 단어를 더블탭', 'or double-tap a word')})
+        </span>
+      </button>
+
+      {/* 데스크탑 드래그 후 작은 액션 팝업 — 마우스 사용자 전용 */}
       {selection && (
         <div
           data-vocab-ui
@@ -3312,30 +3596,47 @@ function ArticleReader({ content, articleId, onAddToVocab, lang = 'ko' }) {
         </div>
       )}
 
-      {/* 입력 폼 (모달 스타일) */}
+      {/* 입력 시트 — 하단 고정, 키보드 위로 떠오름 */}
       {adding && (
-        <div
-          data-vocab-ui
-          style={{
-            position: 'fixed', inset: 0,
-            background: 'rgba(31,58,46,0.5)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 200, padding: 16,
-          }}
-          onClick={(e) => { if (e.target === e.currentTarget) setAdding(null); }}
-        >
+        <>
+          {/* 백드롭 */}
+          <div
+            data-vocab-ui
+            onClick={() => setAdding(null)}
+            style={{
+              position: 'fixed', inset: 0,
+              background: 'rgba(31,58,46,0.4)',
+              zIndex: 199,
+            }}
+          />
+          {/* 시트 본체 */}
           <div data-vocab-ui style={{
-            background: '#FAF7EC', borderRadius: 14, padding: 20,
-            width: '100%', maxWidth: 360,
-            boxShadow: '0 20px 60px rgba(31,58,46,0.4)',
+            position: 'fixed',
+            left: 0, right: 0,
+            bottom: 'calc(var(--kb-height, 0px) + env(safe-area-inset-bottom, 0px))',
+            background: '#FAF7EC',
+            borderRadius: '20px 20px 0 0',
+            padding: '18px 20px',
+            boxShadow: '0 -10px 40px rgba(31,58,46,0.25)',
+            zIndex: 200,
+            transition: 'bottom 120ms ease-out',
           }}>
-            <div style={{ fontSize: 11, letterSpacing: '0.15em', color: '#7A8E7E', fontWeight: 700, marginBottom: 8 }}>
+            {/* 시트 핸들 */}
+            <div style={{
+              width: 36, height: 4, borderRadius: 2,
+              background: 'rgba(31,58,46,0.15)',
+              margin: '-6px auto 12px',
+            }} />
+            <div style={{ fontSize: 11, letterSpacing: '0.15em', color: '#7A8E7E', fontWeight: 700, marginBottom: 10 }}>
               {t('단어장에 추가', 'ADD TO WORDBOOK')}
             </div>
             <input
               value={adding.en}
               onChange={(e) => setAdding({ ...adding, en: e.target.value })}
               placeholder={t('영어 표현', 'English')}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               style={{ ...inputStyle, marginBottom: 8 }}
               autoFocus
             />
@@ -3365,7 +3666,7 @@ function ArticleReader({ content, articleId, onAddToVocab, lang = 'ko' }) {
               <button onClick={() => setAdding(null)} style={secondaryBtn}>{t('취소', 'Cancel')}</button>
             </div>
           </div>
-        </div>
+        </>
       )}
     </>
   );
@@ -3901,7 +4202,7 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
               }}
             />
           </Card>
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <div data-kb-avoid style={{ display: 'flex', gap: 8, marginTop: 12, background: '#F5EFE0', paddingTop: 8, paddingBottom: 8 }}>
             <button onClick={saveArticle} style={{ ...primaryBtn, flex: 1, justifyContent: 'center' }}>
               <Save size={14} /> {t('저장', 'Save')}
             </button>
