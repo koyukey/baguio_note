@@ -839,6 +839,7 @@ function SectionTitle({ children, kicker }) {
 //  대시보드 탭 — 학습 / 수업 중심
 // ============================================================
 function DashboardTab({ lang = 'ko', status, dDay, totalDays, daysIn, weekNum, totalWeeks, phpRate, rateUpdated, checklist, setChecklist, schedule, expenses, vocab, totalSpentPhp, goTo }) {
+  const t = (ko, en) => lang === 'ko' ? ko : en;
   const doneCount = checklist.filter(c => c.done).length;
   const pendingCount = checklist.filter(c => !c.done).length;
 
@@ -878,10 +879,17 @@ function DashboardTab({ lang = 'ko', status, dDay, totalDays, daysIn, weekNum, t
 
   // ===== Hero 상태 계산 =====
   const formatMins = (m) => {
-    if (m < 60) return `${m}분`;
-    const h = Math.floor(m/60);
-    const mm = m % 60;
-    return mm === 0 ? `${h}시간` : `${h}시간 ${mm}분`;
+    if (lang === 'ko') {
+      if (m < 60) return `${m}분`;
+      const h = Math.floor(m/60);
+      const mm = m % 60;
+      return mm === 0 ? `${h}시간` : `${h}시간 ${mm}분`;
+    } else {
+      if (m < 60) return `${m} min`;
+      const h = Math.floor(m/60);
+      const mm = m % 60;
+      return mm === 0 ? `${h}h` : `${h}h ${mm}m`;
+    }
   };
   const nowTimeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
   const dayKoMapFull = { mon:'월', tue:'화', wed:'수', thu:'목', fri:'금', sat:'토', sun:'일' };
@@ -989,7 +997,7 @@ function DashboardTab({ lang = 'ko', status, dDay, totalDays, daysIn, weekNum, t
           <div style={{ marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 11, opacity: 0.85 }}>
               <span className="pulse-dot" style={{ width: 7, height: 7, borderRadius: 4, background: '#C45A3F', display: 'inline-block' }} />
-              <span style={{ fontWeight: 600 }}>{formatMins(heroState.current.minsRemaining)} 남음</span>
+              <span style={{ fontWeight: 600 }}>{formatMins(heroState.current.minsRemaining)} {t('남음', 'left')}</span>
             </div>
             <div className="display" style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.1, marginBottom: 4 }}>
               {heroState.current.subject}
@@ -1001,7 +1009,7 @@ function DashboardTab({ lang = 'ko', status, dDay, totalDays, daysIn, weekNum, t
             )}
             {heroState.next && (
               <div style={{ marginTop: 10, fontSize: 11, opacity: 0.6 }}>
-                다음 → {heroState.next.time} {heroState.next.subject}
+                {t('다음', 'Next')} → {heroState.next.time} {heroState.next.subject}
               </div>
             )}
           </div>
@@ -1011,7 +1019,7 @@ function DashboardTab({ lang = 'ko', status, dDay, totalDays, daysIn, weekNum, t
         {(heroState.type === 'break' || heroState.type === 'before-first') && (
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 6, fontWeight: 600 }}>
-              {formatMins(heroState.next.minsUntil)} 후
+              {t(`${formatMins(heroState.next.minsUntil)} 후`, `in ${formatMins(heroState.next.minsUntil)}`)}
             </div>
             <div className="display" style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.1, marginBottom: 4 }}>
               {heroState.next.subject}
@@ -1179,7 +1187,7 @@ function DashboardTab({ lang = 'ko', status, dDay, totalDays, daysIn, weekNum, t
               <div className="display-italic" style={{ fontSize: 18, color: '#C45A3F', lineHeight: 1.4 }}>{todayExpression.ko}</div>
             )}
             <button onClick={(e) => { e.stopPropagation(); goTo('english'); }} style={{ ...btnLink, marginTop: 12, alignSelf: 'flex-start' }}>
-              전체 단어장 <ChevronRight size={12} />
+              {t('전체 단어장', 'Full Wordbook')} <ChevronRight size={12} />
             </button>
           </Card>
         </>
@@ -1228,7 +1236,7 @@ function DashboardTab({ lang = 'ko', status, dDay, totalDays, daysIn, weekNum, t
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600, fontSize: 15, textDecoration: isPast ? 'line-through' : 'none' }}>
-                      {c.subject || '수업'}
+                      {c.subject || t('수업', 'Class')}
                     </div>
                     {(c.teacher || c.room || c.floor) && (
                       <div style={{ fontSize: 11, color: '#7A8E7E', marginTop: 3 }}>
@@ -1250,23 +1258,23 @@ function DashboardTab({ lang = 'ko', status, dDay, totalDays, daysIn, weekNum, t
       </Card>
 
       {/* 하단 요약 — 지출 + 할 일 (컴팩트) */}
-      <SectionTitle kicker="OVERVIEW">간단히 보기</SectionTitle>
+      <SectionTitle kicker="OVERVIEW">{t('간단히 보기', 'At a glance')}</SectionTitle>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <Card style={{ padding: 14, cursor: 'pointer' }} onClick={() => goTo('money')}>
-          <div style={{ fontSize: 9, letterSpacing: '0.15em', color: '#7A8E7E', fontWeight: 600 }}>지출 · ₱</div>
+          <div style={{ fontSize: 9, letterSpacing: '0.15em', color: '#7A8E7E', fontWeight: 600 }}>{t('지출 · ₱', 'SPENT · ₱')}</div>
           <div className="display" style={{ fontSize: 20, fontWeight: 700, lineHeight: 1, marginTop: 4 }}>
             {totalSpentPhp.toFixed(0)}
           </div>
           <div style={{ fontSize: 9, color: '#7A8E7E', marginTop: 4 }}>
-            {expenses.length}건 · 1₱={phpRate.toFixed(1)}₩
+            {expenses.length}{t('건', '')} · 1₱={phpRate.toFixed(1)}₩
           </div>
         </Card>
         <Card style={{ padding: 14, cursor: 'pointer' }} onClick={() => goTo('plan')}>
-          <div style={{ fontSize: 9, letterSpacing: '0.15em', color: '#7A8E7E', fontWeight: 600 }}>할 일</div>
+          <div style={{ fontSize: 9, letterSpacing: '0.15em', color: '#7A8E7E', fontWeight: 600 }}>{t('할 일', 'TO-DO')}</div>
           <div className="display" style={{ fontSize: 20, fontWeight: 700, lineHeight: 1, marginTop: 4 }}>
-            {pendingCount}<span style={{ color: '#7A8E7E', fontSize: 14 }}> 남음</span>
+            {pendingCount}<span style={{ color: '#7A8E7E', fontSize: 14 }}>{t(' 남음', ' left')}</span>
           </div>
-          <div style={{ fontSize: 9, color: '#7A8E7E', marginTop: 4 }}>완료 {doneCount}건</div>
+          <div style={{ fontSize: 9, color: '#7A8E7E', marginTop: 4 }}>{t(`완료 ${doneCount}건`, `${doneCount} done`)}</div>
         </Card>
       </div>
     </>
@@ -1321,6 +1329,7 @@ function SortableTodoItem({ item, isLast, onToggle, onRemove }) {
 }
 
 function PlanTab({ lang = 'ko', checklist, setChecklist, routines, setRoutines }) {
+  const t = (ko, en) => lang === 'ko' ? ko : en;
   // 그룹명 표시용 한↔영 매핑 (저장된 group 값은 한글 유지 — 데이터 호환)
   const groupLabel = (g) => {
     if (lang === 'ko') return g;
@@ -1433,7 +1442,7 @@ function PlanTab({ lang = 'ko', checklist, setChecklist, routines, setRoutines }
     setNewItem('');
   };
   const clearLog = () => {
-    if (typeof window !== 'undefined' && window.confirm('완료 로그를 모두 삭제할까요? 복구할 수 없습니다.')) {
+    if (typeof window !== 'undefined' && window.confirm(t('완료 로그를 모두 삭제할까요? 복구할 수 없습니다.', 'Clear all completion logs? This cannot be undone.'))) {
       setChecklist(checklist.filter(c => !c.done));
     }
   };
@@ -1449,7 +1458,7 @@ function PlanTab({ lang = 'ko', checklist, setChecklist, routines, setRoutines }
     setNewRoutineName('');
   };
   const deleteRoutine = (id) => {
-    if (typeof window !== 'undefined' && window.confirm('이 루틴을 삭제할까요? 기록도 함께 사라집니다.')) {
+    if (typeof window !== 'undefined' && window.confirm(t('이 루틴을 삭제할까요? 기록도 함께 사라집니다.', 'Delete this routine? History will also be removed.'))) {
       setRoutines(routines.filter(r => r.id !== id));
     }
   };
@@ -1668,7 +1677,8 @@ function PlanTab({ lang = 'ko', checklist, setChecklist, routines, setRoutines }
 // ============================================================
 //  성취 캘린더 — 월별 그리드 + 표식 (X, /, \, 〇)
 // ============================================================
-function AchievementCalendar({ checklist, routines }) {
+function AchievementCalendar({ checklist, routines, lang = 'ko' }) {
+  const t = (ko, en) => lang === 'ko' ? ko : en;
   const [monthOffset, setMonthOffset] = useState(0); // 0=이번달, -1=지난달
   const today = new Date();
   const viewDate = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
@@ -1695,7 +1705,7 @@ function AchievementCalendar({ checklist, routines }) {
 
   return (
     <>
-      <SectionTitle kicker="CALENDAR">성취 달력</SectionTitle>
+      <SectionTitle kicker="CALENDAR">{t('성취 달력', 'Achievements')}</SectionTitle>
 
       {/* 월 네비게이션 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -1724,7 +1734,7 @@ function AchievementCalendar({ checklist, routines }) {
           display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4,
           marginBottom: 8
         }}>
-          {['월','화','수','목','금','토','일'].map((d, i) => (
+          {(lang === 'ko' ? ['월','화','수','목','금','토','일'] : ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']).map((d, i) => (
             <div key={d} style={{
               fontSize: 10, fontWeight: 600,
               color: i === 6 ? '#C45A3F' : '#7A8E7E',
@@ -1854,6 +1864,7 @@ function getEndTime(cls) {
 }
 
 function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
+  const t = (ko, en) => lang === 'ko' ? ko : en;
   const [editing, setEditing] = useState(null); // index or null
   const [form, setForm] = useState({ day: 'mon', time: '09:00', endTime: '09:45', subject: '', teacher: '', room: '', floor: '' });
 
@@ -2015,11 +2026,10 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
 
   return (
     <>
-      <SectionTitle kicker="DAILY">{lang === 'ko' ? '시간표' : 'Schedule'}</SectionTitle>
+      <SectionTitle kicker="DAILY">{t('시간표', 'Schedule')}</SectionTitle>
       <div style={{ fontSize: 11, color: '#7A8E7E', marginTop: -4, marginBottom: 10 }}>
-        {lang === 'ko'
-          ? '요일을 골라 하루 일정을 봅니다. 수업 카드를 탭하면 수정.'
-          : 'Pick a day to see classes. Tap a card to edit.'}
+        {t('요일을 골라 하루 일정을 봅니다. 수업 카드를 탭하면 수정.',
+           'Pick a day to see classes. Tap a card to edit.')}
       </div>
 
       {/* ===== 요일 토글 (가로 스크롤 가능) ===== */}
@@ -2265,18 +2275,18 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
       {/* ===== 에디터 ===== */}
       <div id="schedule-editor" />
       <SectionTitle kicker={editing !== null ? "EDIT" : "ADD"}>
-        {editing !== null ? '수업 수정' : '수업 추가'}
+        {editing !== null ? t('수업 수정', 'Edit Class') : t('수업 추가', 'Add Class')}
       </SectionTitle>
       <Card>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div style={{ gridColumn: '1 / -1' }}>
-            <div style={labelStyle}>요일</div>
+            <div style={labelStyle}>{t('요일', 'Day')}</div>
             <select value={form.day} onChange={(e) => setForm({...form, day: e.target.value})} style={inputStyle}>
-              {allDays.map(d => <option key={d.key} value={d.key}>{d.ko}요일</option>)}
+              {allDays.map(d => <option key={d.key} value={d.key}>{lang === 'ko' ? `${d.ko}요일` : d.en}</option>)}
             </select>
           </div>
           <div>
-            <div style={labelStyle}>시작 시간</div>
+            <div style={labelStyle}>{t('시작 시간', 'Start')}</div>
             <input
               type="time"
               step="300"
@@ -2286,7 +2296,7 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
             />
           </div>
           <div>
-            <div style={labelStyle}>끝 시간</div>
+            <div style={labelStyle}>{t('끝 시간', 'End')}</div>
             <input
               type="time"
               step="300"
@@ -2296,26 +2306,27 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
             />
           </div>
           <div style={{ gridColumn: '1 / -1', fontSize: 10, color: '#7A8E7E', marginTop: -4 }}>
-            기본 45분 수업. 5분 단위로 조정 가능. 주말 긴 일정은 끝 시간을 늘려요.
+            {t('기본 45분 수업. 5분 단위로 조정 가능. 주말 긴 일정은 끝 시간을 늘려요.',
+               'Default 45 min. Adjustable in 5-min steps. Extend end time for longer weekend plans.')}
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
-            <div style={labelStyle}>수업명</div>
-            <input value={form.subject} onChange={(e) => setForm({...form, subject: e.target.value})} placeholder="예) Speaking 1:1" style={inputStyle} />
+            <div style={labelStyle}>{t('수업명', 'Subject')}</div>
+            <input value={form.subject} onChange={(e) => setForm({...form, subject: e.target.value})} placeholder={t('예) Speaking 1:1', 'e.g. Speaking 1:1')} style={inputStyle} />
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
-            <div style={labelStyle}>선생님</div>
-            <input value={form.teacher} onChange={(e) => setForm({...form, teacher: e.target.value})} placeholder="예: Teacher Maria" style={inputStyle} />
+            <div style={labelStyle}>{t('선생님', 'Teacher')}</div>
+            <input value={form.teacher} onChange={(e) => setForm({...form, teacher: e.target.value})} placeholder={t('예: Teacher Maria', 'e.g. Teacher Maria')} style={inputStyle} />
           </div>
           <div>
-            <div style={labelStyle}>강의실</div>
-            <input value={form.room} onChange={(e) => setForm({...form, room: e.target.value})} placeholder="예: G103" style={inputStyle} />
+            <div style={labelStyle}>{t('강의실', 'Room')}</div>
+            <input value={form.room} onChange={(e) => setForm({...form, room: e.target.value})} placeholder={t('예: G103', 'e.g. G103')} style={inputStyle} />
           </div>
           <div>
-            <div style={labelStyle}>층</div>
-            <input value={form.floor} onChange={(e) => setForm({...form, floor: e.target.value})} placeholder="예: B5" style={inputStyle} />
+            <div style={labelStyle}>{t('층', 'Floor')}</div>
+            <input value={form.floor} onChange={(e) => setForm({...form, floor: e.target.value})} placeholder={t('예: B5', 'e.g. B5')} style={inputStyle} />
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
-            <div style={labelStyle}>카테고리 (색상)</div>
+            <div style={labelStyle}>{t('카테고리 (색상)', 'Category (color)')}</div>
             <select
               value={form.category}
               onChange={(e) => setForm({...form, category: e.target.value})}
@@ -2326,13 +2337,14 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
               ))}
             </select>
             <div style={{ fontSize: 10, color: '#7A8E7E', marginTop: 4 }}>
-              자동 분류로 색이 안 맞으면 직접 선택하세요. 선택한 카테고리가 항상 우선됩니다.
+              {t('자동 분류로 색이 안 맞으면 직접 선택하세요. 선택한 카테고리가 항상 우선됩니다.',
+                 'If the auto-color is off, pick one manually — it always takes priority.')}
             </div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           <button onClick={save} style={{ ...primaryBtn, flex: 1, justifyContent: 'center' }}>
-            <Save size={14} /> {editing !== null ? '수정 저장' : '추가'}
+            <Save size={14} /> {editing !== null ? t('수정 저장', 'Save changes') : t('추가', 'Add')}
           </button>
           {editing !== null && (
             <>
@@ -2340,7 +2352,7 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
                 <Trash2 size={14} />
               </button>
               <button onClick={() => { setEditing(null); setForm({ day: 'mon', time: '09:00', endTime: '09:45', subject: '', teacher: '', room: '', floor: '', category: '' }); }} style={secondaryBtn}>
-                취소
+                {t('취소', 'Cancel')}
               </button>
             </>
           )}
@@ -2558,6 +2570,7 @@ function SyncSection({ lang = 'ko' }) {
 }
 
 function MoneyTab({ lang = 'ko', phpRate, setPhpRate, rateUpdated, setRateUpdated, expenses, setExpenses, tripStart, setTripStart, tripEnd, setTripEnd }) {
+  const t = (ko, en) => lang === 'ko' ? ko : en;
   const [amount, setAmount] = useState('100');
   const [direction, setDirection] = useState('php_to_krw'); // or krw_to_php
   const [newExp, setNewExp] = useState({ desc: '', amount: '', currency: 'PHP', category: '식비' });
@@ -2616,13 +2629,13 @@ function MoneyTab({ lang = 'ko', phpRate, setPhpRate, rateUpdated, setRateUpdate
                 </button>
               </div>
             )}
-            <div style={{ fontSize: 10, opacity: 0.6, marginTop: 4 }}>마지막 업데이트: {rateUpdated || '—'}</div>
+            <div style={{ fontSize: 10, opacity: 0.6, marginTop: 4 }}>{t('마지막 업데이트', 'Last updated')}: {rateUpdated || '—'}</div>
           </div>
           <button onClick={() => { setEditRate(!editRate); setDraftRate(phpRate.toString()); }} style={{
             background: 'rgba(245,239,224,0.12)', color: '#F5EFE0', border: 'none',
             borderRadius: 8, padding: '8px 10px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4
           }}>
-            <RefreshCw size={12} /> 수정
+            <RefreshCw size={12} /> {t('수정', 'Edit')}
           </button>
         </div>
       </Card>
@@ -2661,7 +2674,7 @@ function MoneyTab({ lang = 'ko', phpRate, setPhpRate, rateUpdated, setRateUpdate
       </Card>
 
       {/* 가계부 */}
-      <SectionTitle kicker="LEDGER">가계부</SectionTitle>
+      <SectionTitle kicker="LEDGER">{t('가계부', 'Ledger')}</SectionTitle>
       <Card>
         {/* 카테고리별 요약 */}
         {totalPhp > 0 && (
@@ -2684,7 +2697,7 @@ function MoneyTab({ lang = 'ko', phpRate, setPhpRate, rateUpdated, setRateUpdate
                 return (
                   <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}>
                     <span style={{ width: 8, height: 8, borderRadius: 2, background: colors[i % colors.length] }} />
-                    <span>{cat}</span>
+                    <span>{lang === 'en' ? ({'식비':'Food','교통':'Transit','학원':'School','쇼핑':'Shopping','관광':'Tour','기타':'Other'}[cat] || cat) : cat}</span>
                     <span style={{ color: '#7A8E7E' }}>₱{amt.toFixed(0)}</span>
                   </div>
                 );
@@ -2695,10 +2708,10 @@ function MoneyTab({ lang = 'ko', phpRate, setPhpRate, rateUpdated, setRateUpdate
 
         {/* 추가 폼 */}
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 8 }}>
-          <input value={newExp.desc} onChange={(e) => setNewExp({...newExp, desc: e.target.value})} placeholder="내용 (예: 점심 silog)" style={inputStyle} />
-          <input type="number" value={newExp.amount} onChange={(e) => setNewExp({...newExp, amount: e.target.value})} placeholder="금액" style={inputStyle} />
+          <input value={newExp.desc} onChange={(e) => setNewExp({...newExp, desc: e.target.value})} placeholder={t('내용 (예: 점심 silog)', 'Description (e.g. lunch silog)')} style={inputStyle} />
+          <input type="number" value={newExp.amount} onChange={(e) => setNewExp({...newExp, amount: e.target.value})} placeholder={t('금액', 'Amount')} style={inputStyle} />
           <select value={newExp.category} onChange={(e) => setNewExp({...newExp, category: e.target.value})} style={inputStyle}>
-            {['식비','교통','학원','쇼핑','관광','기타'].map(c => <option key={c}>{c}</option>)}
+            {[['식비','Food'],['교통','Transit'],['학원','School'],['쇼핑','Shopping'],['관광','Tour'],['기타','Other']].map(([ko, en]) => <option key={ko} value={ko}>{lang === 'ko' ? ko : en}</option>)}
           </select>
           <select value={newExp.currency} onChange={(e) => setNewExp({...newExp, currency: e.target.value})} style={inputStyle}>
             <option value="PHP">PHP</option>
@@ -2706,14 +2719,14 @@ function MoneyTab({ lang = 'ko', phpRate, setPhpRate, rateUpdated, setRateUpdate
           </select>
         </div>
         <button onClick={addExp} style={{ ...primaryBtn, marginTop: 10, width: '100%', justifyContent: 'center' }}>
-          <Plus size={14} /> 기록 추가
+          <Plus size={14} /> {t('기록 추가', 'Add Entry')}
         </button>
       </Card>
 
       {/* 지출 내역 */}
       {expenses.length > 0 && (
         <>
-          <SectionTitle kicker="HISTORY">내역</SectionTitle>
+          <SectionTitle kicker="HISTORY">{t('내역', 'History')}</SectionTitle>
           <Card style={{ padding: 4 }}>
             {expenses.map((e) => (
               <div key={e.id} style={{
@@ -2724,7 +2737,7 @@ function MoneyTab({ lang = 'ko', phpRate, setPhpRate, rateUpdated, setRateUpdate
                 <div style={{
                   fontSize: 9, padding: '3px 7px', borderRadius: 10,
                   background: '#1F3A2E', color: '#F5EFE0', letterSpacing: '0.05em', fontWeight: 600
-                }}>{e.category}</div>
+                }}>{lang === 'en' ? ({'식비':'Food','교통':'Transit','학원':'School','쇼핑':'Shopping','관광':'Tour','기타':'Other'}[e.category] || e.category) : e.category}</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 500 }}>{e.desc}</div>
                   <div style={{ fontSize: 10, color: '#7A8E7E' }}>{e.date}</div>
@@ -2744,11 +2757,11 @@ function MoneyTab({ lang = 'ko', phpRate, setPhpRate, rateUpdated, setRateUpdate
       <Card style={{ padding: 14 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div>
-            <div style={{ fontSize: 10, color: '#7A8E7E', marginBottom: 4, fontWeight: 600 }}>시작</div>
+            <div style={{ fontSize: 10, color: '#7A8E7E', marginBottom: 4, fontWeight: 600 }}>{t('시작', 'Start')}</div>
             <input type="date" value={tripStart} onChange={(e) => setTripStart(e.target.value)} style={inputStyle} />
           </div>
           <div>
-            <div style={{ fontSize: 10, color: '#7A8E7E', marginBottom: 4, fontWeight: 600 }}>종료</div>
+            <div style={{ fontSize: 10, color: '#7A8E7E', marginBottom: 4, fontWeight: 600 }}>{t('종료', 'End')}</div>
             <input type="date" value={tripEnd} onChange={(e) => setTripEnd(e.target.value)} style={inputStyle} />
           </div>
         </div>
@@ -3272,7 +3285,7 @@ function ArticleReader({ content, articleId, onAddToVocab, lang = 'ko' }) {
           userSelect: 'text', WebkitUserSelect: 'text',
         }}
       >
-        {content || <span style={{ color: '#A8B8AB' }}>내용이 없어요.</span>}
+        {content || <span style={{ color: '#A8B8AB' }}>{t('내용이 없어요.', 'No content.')}</span>}
       </div>
 
       {/* 선택 직후 작은 액션 팝업 — '단어장에 추가' */}
@@ -3481,7 +3494,7 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
       return;
     }
     const now = new Date().toISOString();
-    const title = draftTitle.trim() || '제목 없음';
+    const title = draftTitle.trim() || t('제목 없음', 'Untitled');
     if (editingId === 'new') {
       setArticles([{
         id: `art-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
@@ -3498,7 +3511,7 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
     setEditingId(null);
   };
   const deleteArticle = (id) => {
-    if (typeof window !== 'undefined' && window.confirm('이 글을 삭제할까요?')) {
+    if (typeof window !== 'undefined' && window.confirm(t('이 글을 삭제할까요?', 'Delete this article?'))) {
       setArticles(articles.filter(a => a.id !== id));
       setEditingId(null);
       setViewingId(null);
@@ -3620,12 +3633,12 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
                     </div>
                   )}
                   <div style={{ marginTop: 18, fontSize: 10, color: '#7A8E7E', letterSpacing: '0.1em' }}>
-                    TAP TO {flashSide === 'en' ? '한국어' : 'ENGLISH'}
+                    TAP TO {flashSide === 'en' ? t('한국어', 'KOREAN') : 'ENGLISH'}
                   </div>
                 </Card>
                 <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                  <button onClick={prev} style={{ ...secondaryBtn, flex: 1, justifyContent: 'center' }}>← 이전</button>
-                  <button onClick={next} style={{ ...primaryBtn, flex: 1, justifyContent: 'center' }}>다음 →</button>
+                  <button onClick={prev} style={{ ...secondaryBtn, flex: 1, justifyContent: 'center' }}>← {t('이전', 'Prev')}</button>
+                  <button onClick={next} style={{ ...primaryBtn, flex: 1, justifyContent: 'center' }}>{t('다음', 'Next')} →</button>
                 </div>
               </>
             );
@@ -3736,7 +3749,7 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
             ...primaryBtn, width: '100%', justifyContent: 'center',
             padding: '14px', fontSize: 13, marginBottom: 14
           }}>
-            <Plus size={16} /> 새 글 작성
+            <Plus size={16} /> {t('새 글 작성', 'New Article')}
           </button>
 
           {articles.length === 0 ? (
@@ -3798,7 +3811,7 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
               <button onClick={() => setViewingId(null)} style={{
                 ...btnLink, color: '#5C6F62',
               }}>
-                ← 목록으로
+                ← {t('목록으로', 'Back to list')}
               </button>
             </div>
             <div className="display" style={{
@@ -3826,7 +3839,7 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
             </Card>
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
               <button onClick={() => startEditArticle(article)} style={{ ...primaryBtn, flex: 1, justifyContent: 'center' }}>
-                <Pencil size={14} /> 수정
+                <Pencil size={14} /> {t('수정', 'Edit')}
               </button>
               <button onClick={() => deleteArticle(article.id)} style={{ ...secondaryBtn, color: '#C45A3F', borderColor: 'rgba(196,90,63,0.3)' }}>
                 <Trash2 size={14} />
@@ -3849,7 +3862,7 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
           <input
             value={draftTitle}
             onChange={(e) => setDraftTitle(e.target.value)}
-            placeholder="제목 (예: BBC — Climate change)"
+            placeholder={t('제목 (예: BBC — Climate change)', 'Title (e.g. BBC — Climate change)')}
             className="display"
             style={{
               width: '100%', boxSizing: 'border-box',
@@ -3869,7 +3882,8 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
                 e.target.style.height = 'auto';
                 e.target.style.height = Math.max(e.target.scrollHeight, 280) + 'px';
               }}
-              placeholder="기사 요약, 새 표현 정리, 관심사 자유 작성…&#10;&#10;영어로 써도, 한국어로 써도 좋아요."
+              placeholder={t('기사 요약, 새 표현 정리, 관심사 자유 작성…\n\n영어로 써도, 한국어로 써도 좋아요.',
+                'Article summary, new expressions, anything…\n\nWrite in English or Korean.')}
               ref={(el) => {
                 // 편집 모드 진입 시 기존 글 길이에 맞춰 즉시 펼침
                 if (el) {
@@ -3889,7 +3903,7 @@ function EnglishTab({ lang = 'ko', vocab, setVocab, articles, setArticles, diari
           </Card>
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             <button onClick={saveArticle} style={{ ...primaryBtn, flex: 1, justifyContent: 'center' }}>
-              <Save size={14} /> 저장
+              <Save size={14} /> {t('저장', 'Save')}
             </button>
             <button onClick={() => setEditingId(null)} style={secondaryBtn}>{t('취소', 'Cancel')}</button>
             {editingId !== 'new' && (
