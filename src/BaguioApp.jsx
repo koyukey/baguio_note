@@ -1995,7 +1995,7 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
     'lunch':     '#A8B8AB', // Lunch break (연한 회녹 — 수업 아님, 톤다운)
   };
   const CATEGORY_OPTIONS = [
-    { key: '',          label: '자동 분류 (기본)' },
+    { key: '',          label: t('자동 분류 (기본)', 'Auto (default)') },
     { key: '1on1',      label: '1:1 Lesson' },
     { key: 'speaking',  label: 'Speaking' },
     { key: 'reading',   label: 'Reading' },
