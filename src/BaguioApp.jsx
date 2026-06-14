@@ -109,20 +109,20 @@ const MOTIVATIONS = [
 
 const STARTER_SCHEDULE = [];
 
-// 사용자(Ryan)의 실제 시간표 — LEAP 프로그램.
-// 어학원에서 받은 종이 시간표 기반. 월~금 동일 슬롯으로 일단 채움.
-// (저녁에 사용자가 요일별 차이를 알려주면 그때 다시 정리)
+// 사용자(Ryan)의 실제 시간표 — E ADV 1 (Essential Advanced Book 1).
+// 어학원에서 받은 종이 시간표 기반. 월~금 동일 슬롯.
+// (2026-06-14 새 시간표로 교체 — 월요일부터 반영)
 const RYAN_DAILY_TEMPLATE = [
   { time: '08:00', endTime: '08:45', subject: 'DISC GROUP', teacher: '', room: 'G103', floor: 'B5' },
-  { time: '08:55', endTime: '09:40', subject: 'WRI GROUP', teacher: '', room: 'G103', floor: 'B5' },
-  { time: '09:50', endTime: '10:35', subject: 'PRO GROUP', teacher: '', room: 'B6 LIBRARY', floor: 'B6' },
-  { time: '10:45', endTime: '11:30', subject: 'ECD (E INT 1)', teacher: '', room: 'M309', floor: 'B7' },
-  { time: '11:40', endTime: '12:25', subject: 'MARKET LEADER', teacher: '', room: 'G306', floor: 'B7' },
+  { time: '08:55', endTime: '09:40', subject: 'SPEAK', teacher: '', room: 'G205', floor: 'B6', oneOnOne: true },
+  { time: '09:50', endTime: '10:35', subject: 'SPEAK', teacher: '', room: 'G205', floor: 'B6', oneOnOne: true },
+  { time: '10:45', endTime: '11:30', subject: 'READ', teacher: '', room: 'M309', floor: 'B7', oneOnOne: true },
+  { time: '11:40', endTime: '12:25', subject: 'LISTEN A&B', teacher: '', room: 'M305', floor: 'B7', oneOnOne: true },
   { time: '12:35', endTime: '13:20', subject: 'LUNCH BREAK', teacher: '', room: '', floor: '', category: 'lunch' },
-  { time: '13:30', endTime: '14:15', subject: 'CBE BOOK 2', teacher: '', room: 'M311', floor: 'B7' },
-  { time: '14:25', endTime: '15:10', subject: 'CBE BOOK 1', teacher: '', room: 'G309', floor: 'B7' },
-  { time: '15:20', endTime: '16:05', subject: 'GRAMMAR', teacher: '', room: 'G103', floor: 'B5' },
-  { time: '16:15', endTime: '17:00', subject: 'BE PRE-JOB INT', teacher: '', room: 'G301', floor: 'B7' },
+  { time: '13:30', endTime: '14:15', subject: 'WRI GROUP', teacher: '', room: 'G103', floor: 'B5' },
+  { time: '14:25', endTime: '15:10', subject: 'DISC GROUP', teacher: '', room: 'G103', floor: 'B5' },
+  { time: '15:20', endTime: '16:05', subject: 'GRAMMAR GROUP', teacher: '', room: 'G103', floor: 'B5' },
+  { time: '16:15', endTime: '17:00', subject: 'PRO GROUP', teacher: '', room: 'B6 LIBRARY', floor: 'B6' },
 ];
 const RYAN_WEEK_SCHEDULE = ['mon', 'tue', 'wed', 'thu', 'fri'].flatMap(day =>
   RYAN_DAILY_TEMPLATE.map(slot => ({ day, ...slot }))
@@ -457,13 +457,14 @@ export default function BaguioApp() {
 
       // Ryan의 시간표 일회성 시드 — 월~금 같은 슬롯으로 채움.
       // v3: lunch break(12:35~13:20) 추가. 평일 데이터 재설정.
+      // v4: 새 시간표(E ADV 1)로 교체 — 2026-06-14 (월요일부터 반영).
       // 안전장치: 월~금 외 요일(토·일)에 사용자가 직접 추가한 수업은 보존.
-      const weekSeedFlag = await storage.get('baguio:seeded:week-v3');
+      const weekSeedFlag = await storage.get('baguio:seeded:week-v4');
       if (!weekSeedFlag) {
         const weekdays = new Set(['mon', 'tue', 'wed', 'thu', 'fri']);
         const preserved = loadedSchedule.filter(x => !weekdays.has(x.day));
         loadedSchedule = [...preserved, ...RYAN_WEEK_SCHEDULE];
-        await storage.set('baguio:seeded:week-v3', '1');
+        await storage.set('baguio:seeded:week-v4', '1');
       }
       setSchedule(loadedSchedule);
       const e = await storage.get('baguio:expenses');
@@ -1264,8 +1265,14 @@ function DashboardTab({ lang = 'ko', status, dDay, totalDays, daysIn, weekNum, t
                     <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>~ {endStr}</div>
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 15, textDecoration: isPast ? 'line-through' : 'none' }}>
+                    <div style={{ fontWeight: 600, fontSize: 15, textDecoration: isPast ? 'line-through' : 'none', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                       {c.subject || t('수업', 'Class')}
+                      {c.oneOnOne && (
+                        <span style={{
+                          fontSize: 9, padding: '2px 6px', borderRadius: 4,
+                          background: '#1F3A2E', color: '#F5EFE0', letterSpacing: '0.05em', fontWeight: 700
+                        }}>1:1</span>
+                      )}
                     </div>
                     {(c.teacher || c.room || c.floor) && (
                       <div style={{ fontSize: 11, color: '#7A8E7E', marginTop: 3 }}>
@@ -2214,6 +2221,17 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
                           letterSpacing: '0.1em',
                           fontWeight: 800,
                         }}>NOW</span>
+                      )}
+                      {s.oneOnOne && (
+                        <span style={{
+                          fontSize: 9,
+                          padding: '2px 7px',
+                          borderRadius: 4,
+                          background: 'rgba(245,239,224,0.25)',
+                          color: '#F5EFE0',
+                          letterSpacing: '0.05em',
+                          fontWeight: 800,
+                        }}>1:1</span>
                       )}
                     </div>
 
