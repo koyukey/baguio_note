@@ -418,11 +418,20 @@ export default function BaguioApp() {
           const p = JSON.parse(t);
           // 마이그레이션: 도착일(5/16)을 시작일로 잡았던 옛 데이터 → 수업 시작일(5/17)로
           const migratedStart = p.start === '2026-05-16' ? '2026-05-17' : (p.start || tripStart);
+          // 마이그레이션: 2주 연장으로 종료일 6/13 → 6/26 (2026-06-14). 옛 종료일만 1회 덮어씀.
+          const endSeedFlag = await storage.get('baguio:seeded:tripend-v2');
+          let migratedEnd = p.end || tripEnd;
+          let endChanged = false;
+          if (!endSeedFlag && (p.end === '2026-06-13' || !p.end)) {
+            migratedEnd = '2026-06-26';
+            endChanged = true;
+          }
+          if (!endSeedFlag) await storage.set('baguio:seeded:tripend-v2', '1');
           setTripStart(migratedStart);
-          setTripEnd(p.end || tripEnd);
-          if (p.start === '2026-05-16') {
+          setTripEnd(migratedEnd);
+          if (p.start === '2026-05-16' || endChanged) {
             // 새 값으로 즉시 저장 (Supabase에도 반영)
-            await storage.set('baguio:trip', JSON.stringify({ start: migratedStart, end: p.end || tripEnd }));
+            await storage.set('baguio:trip', JSON.stringify({ start: migratedStart, end: migratedEnd }));
           }
         } catch {}
       }
@@ -1917,20 +1926,17 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule, weekendPlans = [], se
     { key: 'thu', ko: '목', en: 'Thu' }, { key: 'fri', ko: '금', en: 'Fri' }, { key: 'sat', ko: '토', en: 'Sat' }, { key: 'sun', ko: '일', en: 'Sun' }
   ];
 
-  // 표시할 요일: 월-금 + (실제 데이터가 있으면) 토/일
-  const usedDayKeys = new Set(schedule.map(s => s.day));
-  const visibleDays = allDays.filter(d =>
-    ['mon','tue','wed','thu','fri'].includes(d.key) || usedDayKeys.has(d.key)
-  );
+  // 표시할 요일: 월~일 전부 항상 표시 (토·일은 주말 계획 공간)
+  const visibleDays = allDays;
+  const isWeekendKey = (k) => k === 'sat' || k === 'sun';
 
   // 오늘 요일 (기본 선택값 + 하이라이트용)
   const todayJsDay = new Date().getDay(); // 0=일, 1=월…
   const jsDayToKey = { 0:'sun', 1:'mon', 2:'tue', 3:'wed', 4:'thu', 5:'fri', 6:'sat' };
   const todayDayKey = jsDayToKey[todayJsDay];
 
-  // 보고 있는 요일 — 기본은 오늘. 주말이면 월요일로.
-  const defaultDay = visibleDays.some(d => d.key === todayDayKey) ? todayDayKey : 'mon';
-  const [selectedDay, setSelectedDay] = useState(defaultDay);
+  // 보고 있는 요일 — 기본은 오늘 (주말이면 그 주말 그대로 선택)
+  const [selectedDay, setSelectedDay] = useState(todayDayKey);
 
   // 이번 주의 각 요일 날짜 계산 (월~일) — 토글 옆에 "5/25" 식으로 표시
   const today = new Date();
@@ -1940,10 +1946,12 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule, weekendPlans = [], se
   const monday = new Date(today);
   monday.setDate(today.getDate() + mondayOffset);
   const dayKeyToDate = {};
+  const dayKeyToIso = {};
   ['mon','tue','wed','thu','fri','sat','sun'].forEach((k, i) => {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
     dayKeyToDate[k] = `${d.getMonth() + 1}/${d.getDate()}`;
+    dayKeyToIso[k] = getDateKey(d);
   });
 
   // ===== 주말 계획: 이번 주 토·일의 실제 날짜(YYYY-MM-DD) 계산 =====
@@ -2161,8 +2169,68 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule, weekendPlans = [], se
         })}
       </div>
 
-      {/* ===== 선택된 요일 수업 목록 (큰 카드) ===== */}
-      {(() => {
+      {/* ===== 주말(토·일) 선택 시: 수업 대신 주말 계획 ===== */}
+      {isWeekendKey(selectedDay) && (() => {
+        const selIso = dayKeyToIso[selectedDay];
+        const selMd = dayKeyToDate[selectedDay];
+        const selKo = selectedDay === 'sat' ? '토' : '일';
+        const selEn = selectedDay === 'sat' ? 'Sat' : 'Sun';
+        const dayPlans = weekendPlans
+          .filter(p => p.date === selIso)
+          .sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{
+              padding: '14px 16px', background: '#FFFDF7',
+              border: '1px dashed rgba(31,58,46,0.18)', borderRadius: 12,
+              fontSize: 12, color: '#7A8E7E', lineHeight: 1.5,
+            }}>
+              {t(`${selKo}요일은 수업이 없어요. 여행·카페·액티비티 같은 자유 일정을 넣어보세요.`,
+                 `No classes on ${selEn}. Add free plans — trips, cafés, activities.`)}
+            </div>
+
+            {dayPlans.map(p => (
+              <button
+                key={p.id}
+                onClick={() => { editWP(p); document.getElementById('weekend-editor')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}
+                style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 12, width: '100%',
+                  padding: '16px', background: '#D17B3A',
+                  border: wpEditingId === p.id ? '2px solid #1F3A2E' : 'none',
+                  borderRadius: 12, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                  boxShadow: '0 2px 8px rgba(209,123,58,0.25)',
+                }}
+              >
+                {p.time && (
+                  <span className="display" style={{ fontSize: 15, fontWeight: 800, color: '#F5EFE0', minWidth: 52 }}>
+                    {p.time}
+                  </span>
+                )}
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span className="display" style={{ display: 'block', fontWeight: 700, fontSize: 17, color: '#F5EFE0', lineHeight: 1.25 }}>{p.title}</span>
+                  {p.memo && (
+                    <span style={{ display: 'block', fontSize: 13, color: '#F5EFE0', opacity: 0.85, marginTop: 5, whiteSpace: 'pre-wrap' }}>{p.memo}</span>
+                  )}
+                </span>
+              </button>
+            ))}
+
+            <button
+              onClick={() => { startNewWP(selIso); document.getElementById('weekend-editor')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}
+              style={{
+                padding: '14px', background: 'transparent',
+                border: '1px dashed rgba(31,58,46,0.25)', borderRadius: 10,
+                color: '#7A8E7E', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              + {lang === 'ko' ? `${selKo}요일 (${selMd}) 일정 추가` : `Add plan for ${selEn} (${selMd})`}
+            </button>
+          </div>
+        );
+      })()}
+
+      {/* ===== 선택된 요일 수업 목록 (큰 카드) — 평일만 ===== */}
+      {!isWeekendKey(selectedDay) && (() => {
         const dayClasses = schedule
           .map((s, idx) => ({ s, idx }))
           .filter(({ s }) => s.day === selectedDay)
@@ -2334,8 +2402,8 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule, weekendPlans = [], se
         );
       })()}
 
-      {/* ===== 수업 카테고리 범례 ===== */}
-      {schedule.length > 0 && (
+      {/* ===== 수업 카테고리 범례 (평일만) ===== */}
+      {!isWeekendKey(selectedDay) && schedule.length > 0 && (
         <div style={{
           display: 'flex', flexWrap: 'wrap', gap: 8,
           marginTop: 10, fontSize: 10, color: '#5C6F62'
@@ -2358,7 +2426,9 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule, weekendPlans = [], se
         </div>
       )}
 
-      {/* ===== 에디터 ===== */}
+      {/* ===== 수업 에디터 (평일 또는 수업 편집 중일 때만) ===== */}
+      {(!isWeekendKey(selectedDay) || editing !== null) && (
+      <>
       <div id="schedule-editor" />
       <SectionTitle kicker={editing !== null ? "EDIT" : "ADD"}>
         {editing !== null ? t('수업 수정', 'Edit Class') : t('수업 추가', 'Add Class')}
@@ -2444,82 +2514,10 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule, weekendPlans = [], se
           )}
         </div>
       </Card>
+      </>
+      )}
 
-      {/* ===== 이번 주말 계획 (토·일 자유 일정) ===== */}
-      <div id="weekend-plans" style={{ marginTop: 28 }} />
-      <SectionTitle kicker="WEEKEND">
-        {t('이번 주말', 'This Weekend')}
-      </SectionTitle>
-      <div style={{ fontSize: 11, color: '#7A8E7E', marginBottom: 12 }}>
-        {t('토·일은 수업이 없어요. 여행·카페·액티비티 같은 자유 일정을 날짜별로 넣어보세요.',
-           'No classes on weekends. Add free plans (trips, cafés, activities) by date.')}
-      </div>
-
-      {weekendDates.map(wd => {
-        const dayPlans = weekendPlans
-          .filter(p => p.date === wd.iso)
-          .sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
-        const isPastDay = wd.iso < todayIso;
-        const isTodayDay = wd.iso === todayIso;
-        return (
-          <div key={wd.iso} style={{ marginBottom: 18, opacity: isPastDay ? 0.55 : 1 }}>
-            {/* 날짜 헤더 */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span className="display" style={{ fontSize: 15, fontWeight: 700, color: '#1F3A2E' }}>
-                {lang === 'ko' ? `${wd.ko}요일` : wd.en} · {wd.md}
-              </span>
-              {isTodayDay && (
-                <span style={{
-                  fontSize: 9, padding: '2px 7px', borderRadius: 4,
-                  background: '#C45A3F', color: '#F5EFE0', letterSpacing: '0.1em', fontWeight: 700
-                }}>{t('오늘', 'TODAY')}</span>
-              )}
-            </div>
-
-            {/* 그 날의 계획 카드들 */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {dayPlans.map(p => (
-                <button
-                  key={p.id}
-                  onClick={() => { editWP(p); document.getElementById('weekend-editor')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}
-                  style={{
-                    display: 'flex', alignItems: 'flex-start', gap: 12, width: '100%',
-                    padding: '12px 14px', background: '#FFFDF7',
-                    border: wpEditingId === p.id ? '2px solid #1F3A2E' : '1px solid rgba(31,58,46,0.12)',
-                    borderRadius: 12, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
-                  }}
-                >
-                  {p.time && (
-                    <span className="display" style={{ fontSize: 14, fontWeight: 700, color: '#C45A3F', minWidth: 46 }}>
-                      {p.time}
-                    </span>
-                  )}
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontWeight: 600, fontSize: 14, color: '#1F3A2E' }}>{p.title}</span>
-                    {p.memo && (
-                      <span style={{ display: 'block', fontSize: 12, color: '#7A8E7E', marginTop: 3, whiteSpace: 'pre-wrap' }}>{p.memo}</span>
-                    )}
-                  </span>
-                </button>
-              ))}
-
-              {/* 그 날에 계획 추가 버튼 */}
-              <button
-                onClick={() => { startNewWP(wd.iso); document.getElementById('weekend-editor')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}
-                style={{
-                  padding: '10px', background: 'transparent',
-                  border: '1px dashed rgba(31,58,46,0.2)', borderRadius: 10,
-                  color: '#7A8E7E', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-                }}
-              >
-                + {lang === 'ko' ? `${wd.ko}요일 일정 추가` : `Add ${wd.en} plan`}
-              </button>
-            </div>
-          </div>
-        );
-      })}
-
-      {/* 주말 계획 에디터 */}
+      {/* 주말 계획 에디터 (토·일 선택 시 카드/추가 버튼에서 열림) */}
       <div id="weekend-editor" />
       {wpEditingId && (
         <>
