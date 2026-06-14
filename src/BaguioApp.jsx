@@ -383,7 +383,7 @@ export default function BaguioApp() {
 
   // 여행 정보 (5/16 도착 → 5/17 수업 시작)
   const [tripStart, setTripStart] = useState('2026-05-17');
-  const [tripEnd, setTripEnd] = useState('2026-06-13');
+  const [tripEnd, setTripEnd] = useState('2026-06-26'); // 2026-06-14 2주 연장 (6/27 귀국, 6/26 마지막날)
 
   // 환율
   const [phpRate, setPhpRate] = useState(24.17);
@@ -616,8 +616,8 @@ export default function BaguioApp() {
   const dDay = Math.round((start - today) / MS_PER_DAY);
   const totalDays = Math.round((end - start) / MS_PER_DAY) + 1; // inclusive
   const daysIn = Math.round((today - start) / MS_PER_DAY) + 1; // 시작일이 Day 1
-  // 주차: 5/16(토) 시작 → 5/16~5/22 = 1주차, 5/23~5/29 = 2주차 ... 6/13(토)은 5주차 첫날
-  // 단, 코스가 정확히 4주(28일)면 4, 그 이상이면 자연 ceil
+  // 주차: 시작일 기준 7일 단위로 묶음 (1~7일=1주차, 8~14일=2주차 ...)
+  // totalDays / 7 반올림으로 총 주차 산출 → 기간 연장돼도 자동 반영 (2026-06-14 6주로 연장됨)
   const totalWeeks = Math.max(1, Math.round(totalDays / 7));
   const weekNum = daysIn >= 1 ? Math.min(totalWeeks, Math.ceil(daysIn / 7)) : 0;
   const todayMonthDay = `${today.getMonth()+1}/${today.getDate()}`;
