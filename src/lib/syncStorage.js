@@ -11,6 +11,7 @@ const COLUMN_MAP = {
   'baguio:routines': 'routines',
   'baguio:articles': 'articles',
   'baguio:diaries': 'diaries',
+  'baguio:weekendPlans': 'weekend_plans',
 };
 // 시드 플래그 등 메타 키 — localStorage에만 저장하고 Supabase에는 안 올림
 const LOCAL_ONLY_KEYS = new Set(['baguio:seeded:diary-v1', 'baguio:seeded:tue-v1', 'baguio:seeded:week-v2', 'baguio:seeded:week-v3', 'baguio:seeded:week-v4']);
@@ -94,7 +95,28 @@ async function flushUpserts() {
       user_id: activeUserId,
       keys: Object.keys(updates),
     });
-    // 실패한 변경은 다음 flush에 재시도되도록 다시 큐에 넣기
+    // 가드: 아직 Supabase에 없는 컬럼 때문에 전체 동기화가 막히는 것 방지.
+    // PostgreSQL "undefined_column"(42703) 에러면, 누락된 컬럼을 payload에서 빼고
+    // 나머지(시간표·일기 등)는 정상 저장되도록 한 번 더 시도한다.
+    // (예: weekend_plans 컬럼 추가 SQL을 아직 안 돌린 상태)
+    if (error.code === '42703' || /column .* does not exist/i.test(error.message || '')) {
+      const missingCols = Object.keys(updates).filter(col =>
+        (error.message || '').includes(col)
+      );
+      if (missingCols.length > 0) {
+        const cleaned = {};
+        for (const [col, val] of Object.entries(updates)) {
+          if (!missingCols.includes(col)) cleaned[col] = val;
+        }
+        // 누락 컬럼은 로컬에만 남기고 원격 큐에서 제외 (재시도 안 함 → 무한루프 방지)
+        if (Object.keys(cleaned).length > 0) {
+          pendingUpserts = { ...cleaned, ...pendingUpserts };
+          if (!upsertTimer) upsertTimer = setTimeout(flushUpserts, 500);
+        }
+        return;
+      }
+    }
+    // 그 외 일반 실패는 기존대로 전체 재시도
     pendingUpserts = { ...updates, ...pendingUpserts };
     if (!upsertTimer) upsertTimer = setTimeout(flushUpserts, 5000);
     return;

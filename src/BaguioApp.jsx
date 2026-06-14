@@ -401,6 +401,8 @@ export default function BaguioApp() {
   const [routines, setRoutines] = useState(STARTER_ROUTINES);
   const [articles, setArticles] = useState([]);
   const [diaries, setDiaries] = useState(STARTER_DIARIES);
+  // 주말(토·일) 자유 계획 — 특정 날짜에 묶임. [{id, date:'YYYY-MM-DD', time, title, memo}]
+  const [weekendPlans, setWeekendPlans] = useState([]);
 
   // 첫 로드 시 Supabase 동기화 → 저장된 데이터 불러오기
   useEffect(() => {
@@ -484,6 +486,8 @@ export default function BaguioApp() {
       if (ro) { try { setRoutines(JSON.parse(ro)); } catch {} }
       const ar = await storage.get('baguio:articles');
       if (ar) { try { setArticles(JSON.parse(ar)); } catch {} }
+      const wp = await storage.get('baguio:weekendPlans');
+      if (wp) { try { setWeekendPlans(JSON.parse(wp)); } catch {} }
       const dr = await storage.get('baguio:diaries');
       let loadedDiaries = STARTER_DIARIES;
       if (dr) {
@@ -524,6 +528,7 @@ export default function BaguioApp() {
   useEffect(() => { if (loaded) storage.set('baguio:vocab', JSON.stringify(vocab)); }, [vocab, loaded]);
   useEffect(() => { if (loaded) storage.set('baguio:routines', JSON.stringify(routines)); }, [routines, loaded]);
   useEffect(() => { if (loaded) storage.set('baguio:articles', JSON.stringify(articles)); }, [articles, loaded]);
+  useEffect(() => { if (loaded) storage.set('baguio:weekendPlans', JSON.stringify(weekendPlans)); }, [weekendPlans, loaded]);
   useEffect(() => { if (loaded) storage.set('baguio:diaries', JSON.stringify(diaries)); }, [diaries, loaded]);
 
   // Pull-to-Refresh — 화면 위에서 아래로 당겨서 새로고침
@@ -594,6 +599,7 @@ export default function BaguioApp() {
           }
           case 'baguio:routines': setRoutines(JSON.parse(serialized)); break;
           case 'baguio:articles': setArticles(JSON.parse(serialized)); break;
+          case 'baguio:weekendPlans': setWeekendPlans(JSON.parse(serialized)); break;
           case 'baguio:diaries': setDiaries(JSON.parse(serialized)); break;
         }
       } catch (e) {
@@ -764,7 +770,7 @@ export default function BaguioApp() {
           />
         )}
         {tab === 'schedule' && (
-          <ScheduleTab lang={lang} schedule={schedule} setSchedule={setSchedule} />
+          <ScheduleTab lang={lang} schedule={schedule} setSchedule={setSchedule} weekendPlans={weekendPlans} setWeekendPlans={setWeekendPlans} />
         )}
         {tab === 'money' && (
           <MoneyTab
@@ -1901,7 +1907,7 @@ function getEndTime(cls) {
   return minutesToTime(Math.min(timeToMinutes(cls.time) + 45, 23 * 60 + 59));
 }
 
-function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
+function ScheduleTab({ lang = 'ko', schedule, setSchedule, weekendPlans = [], setWeekendPlans = () => {} }) {
   const t = (ko, en) => lang === 'ko' ? ko : en;
   const [editing, setEditing] = useState(null); // index or null
   const [form, setForm] = useState({ day: 'mon', time: '09:00', endTime: '09:45', subject: '', teacher: '', room: '', floor: '' });
@@ -1939,6 +1945,36 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
     d.setDate(monday.getDate() + i);
     dayKeyToDate[k] = `${d.getMonth() + 1}/${d.getDate()}`;
   });
+
+  // ===== 주말 계획: 이번 주 토·일의 실제 날짜(YYYY-MM-DD) 계산 =====
+  // 일요일이면 "이번 주"가 끝났으므로, 토·일 모두 어제·오늘이거나 지나간 날일 수 있음.
+  // 단순하게 이번 주 월요일 기준 +5(토)/+6(일)을 쓴다.
+  const satDate = new Date(monday); satDate.setDate(monday.getDate() + 5);
+  const sunDate = new Date(monday); sunDate.setDate(monday.getDate() + 6);
+  const weekendDates = [
+    { iso: getDateKey(satDate), ko: '토', en: 'Sat', md: `${satDate.getMonth()+1}/${satDate.getDate()}` },
+    { iso: getDateKey(sunDate), ko: '일', en: 'Sun', md: `${sunDate.getMonth()+1}/${sunDate.getDate()}` },
+  ];
+  const todayIso = getDateKey(today);
+
+  // 주말 계획 추가/수정/삭제
+  const blankWP = { date: weekendDates[0].iso, time: '', title: '', memo: '' };
+  const [wpForm, setWpForm] = useState(blankWP);
+  const [wpEditingId, setWpEditingId] = useState(null); // null | 'new' | <id>
+  const saveWP = () => {
+    if (!wpForm.title.trim()) return;
+    if (wpEditingId && wpEditingId !== 'new') {
+      setWeekendPlans(weekendPlans.map(p => p.id === wpEditingId ? { ...p, ...wpForm } : p));
+    } else {
+      const newId = `wp-${Date.now()}-${weekendPlans.length}`;
+      setWeekendPlans([...weekendPlans, { id: newId, ...wpForm }]);
+    }
+    setWpForm(blankWP);
+    setWpEditingId(null);
+  };
+  const editWP = (p) => { setWpForm({ date: p.date, time: p.time || '', title: p.title || '', memo: p.memo || '' }); setWpEditingId(p.id); };
+  const removeWP = (id) => { setWeekendPlans(weekendPlans.filter(p => p.id !== id)); if (wpEditingId === id) { setWpForm(blankWP); setWpEditingId(null); } };
+  const startNewWP = (iso) => { setWpForm({ ...blankWP, date: iso }); setWpEditingId('new'); };
 
   // 30분 단위 그리드 — 기본 08:00 ~ 18:00.
   // 데이터가 그 범위 바깥(예: 07:30 시작, 20:00 끝)이면 범위 자동 확장.
@@ -2408,6 +2444,127 @@ function ScheduleTab({ lang = 'ko', schedule, setSchedule }) {
           )}
         </div>
       </Card>
+
+      {/* ===== 이번 주말 계획 (토·일 자유 일정) ===== */}
+      <div id="weekend-plans" style={{ marginTop: 28 }} />
+      <SectionTitle kicker="WEEKEND">
+        {t('이번 주말', 'This Weekend')}
+      </SectionTitle>
+      <div style={{ fontSize: 11, color: '#7A8E7E', marginBottom: 12 }}>
+        {t('토·일은 수업이 없어요. 여행·카페·액티비티 같은 자유 일정을 날짜별로 넣어보세요.',
+           'No classes on weekends. Add free plans (trips, cafés, activities) by date.')}
+      </div>
+
+      {weekendDates.map(wd => {
+        const dayPlans = weekendPlans
+          .filter(p => p.date === wd.iso)
+          .sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
+        const isPastDay = wd.iso < todayIso;
+        const isTodayDay = wd.iso === todayIso;
+        return (
+          <div key={wd.iso} style={{ marginBottom: 18, opacity: isPastDay ? 0.55 : 1 }}>
+            {/* 날짜 헤더 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span className="display" style={{ fontSize: 15, fontWeight: 700, color: '#1F3A2E' }}>
+                {lang === 'ko' ? `${wd.ko}요일` : wd.en} · {wd.md}
+              </span>
+              {isTodayDay && (
+                <span style={{
+                  fontSize: 9, padding: '2px 7px', borderRadius: 4,
+                  background: '#C45A3F', color: '#F5EFE0', letterSpacing: '0.1em', fontWeight: 700
+                }}>{t('오늘', 'TODAY')}</span>
+              )}
+            </div>
+
+            {/* 그 날의 계획 카드들 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {dayPlans.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => { editWP(p); document.getElementById('weekend-editor')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}
+                  style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 12, width: '100%',
+                    padding: '12px 14px', background: '#FFFDF7',
+                    border: wpEditingId === p.id ? '2px solid #1F3A2E' : '1px solid rgba(31,58,46,0.12)',
+                    borderRadius: 12, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                  }}
+                >
+                  {p.time && (
+                    <span className="display" style={{ fontSize: 14, fontWeight: 700, color: '#C45A3F', minWidth: 46 }}>
+                      {p.time}
+                    </span>
+                  )}
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontWeight: 600, fontSize: 14, color: '#1F3A2E' }}>{p.title}</span>
+                    {p.memo && (
+                      <span style={{ display: 'block', fontSize: 12, color: '#7A8E7E', marginTop: 3, whiteSpace: 'pre-wrap' }}>{p.memo}</span>
+                    )}
+                  </span>
+                </button>
+              ))}
+
+              {/* 그 날에 계획 추가 버튼 */}
+              <button
+                onClick={() => { startNewWP(wd.iso); document.getElementById('weekend-editor')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}
+                style={{
+                  padding: '10px', background: 'transparent',
+                  border: '1px dashed rgba(31,58,46,0.2)', borderRadius: 10,
+                  color: '#7A8E7E', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                + {lang === 'ko' ? `${wd.ko}요일 일정 추가` : `Add ${wd.en} plan`}
+              </button>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* 주말 계획 에디터 */}
+      <div id="weekend-editor" />
+      {wpEditingId && (
+        <>
+          <SectionTitle kicker={wpEditingId === 'new' ? 'ADD' : 'EDIT'}>
+            {wpEditingId === 'new' ? t('주말 일정 추가', 'Add Weekend Plan') : t('주말 일정 수정', 'Edit Weekend Plan')}
+          </SectionTitle>
+          <Card>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <div style={labelStyle}>{t('날짜', 'Date')}</div>
+                <select value={wpForm.date} onChange={(e) => setWpForm({ ...wpForm, date: e.target.value })} style={inputStyle}>
+                  {weekendDates.map(wd => (
+                    <option key={wd.iso} value={wd.iso}>{lang === 'ko' ? `${wd.ko}요일 (${wd.md})` : `${wd.en} (${wd.md})`}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <div style={labelStyle}>{t('시간 (선택)', 'Time (optional)')}</div>
+                <input type="time" step="300" value={wpForm.time} onChange={(e) => setWpForm({ ...wpForm, time: e.target.value })} style={inputStyle} />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <div style={labelStyle}>{t('제목', 'Title')}</div>
+                <input value={wpForm.title} onChange={(e) => setWpForm({ ...wpForm, title: e.target.value })} placeholder={t('예) 바기오 시내 구경', 'e.g. Explore downtown Baguio')} style={inputStyle} />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <div style={labelStyle}>{t('메모 (선택)', 'Memo (optional)')}</div>
+                <textarea value={wpForm.memo} onChange={(e) => setWpForm({ ...wpForm, memo: e.target.value })} placeholder={t('장소, 같이 갈 사람, 준비물 등', 'Place, who with, what to bring...')} rows={3} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button onClick={saveWP} style={{ ...primaryBtn, flex: 1, justifyContent: 'center' }}>
+                <Save size={14} /> {wpEditingId === 'new' ? t('추가', 'Add') : t('수정 저장', 'Save changes')}
+              </button>
+              {wpEditingId !== 'new' && (
+                <button onClick={() => removeWP(wpEditingId)} style={{ ...secondaryBtn, color: '#C45A3F', borderColor: 'rgba(196,90,63,0.3)' }}>
+                  <Trash2 size={14} />
+                </button>
+              )}
+              <button onClick={() => { setWpForm(blankWP); setWpEditingId(null); }} style={secondaryBtn}>
+                {t('취소', 'Cancel')}
+              </button>
+            </div>
+          </Card>
+        </>
+      )}
     </>
   );
 }
